@@ -33,8 +33,8 @@ def download_municipios() -> None:
 def download_poblacion() -> None:
     """Fichero pobmunYY.xlsx con la población de todos los municipios."""
     for year in POPULATION_YEARS:
-        # Si el año pedido aún no está publicado, se prueba el anterior
-        for y in (year, year - 1):
+        # Si el año pedido aún no está publicado, se prueban los anteriores
+        for y in range(year, year - 4, -1):
             yy = str(y)[2:]
             url = f"https://www.ine.es/pob_xls/pobmun{yy}.xlsx"
             if raw_path(SOURCE, f"pobmun_{y}.xlsx").exists():
@@ -66,6 +66,9 @@ def download_renta() -> None:
         url = f"{API}/DATOS_TABLA/{tid}"
         try:
             data = http_get(url, params={"nult": 1}).json()
+            if not isinstance(data, list):  # el INE devuelve a veces un mensaje de error
+                log.warning("Tabla ADRH %s sin datos: %s", tid, str(data)[:120])
+                continue
             # Solo nos interesan series municipales (no distritos ni secciones)
             data = [s for s in data if "distrito" not in s["Nombre"].lower()
                     and "sección" not in s["Nombre"].lower()]
