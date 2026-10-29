@@ -20,6 +20,7 @@ Todas se descargan con `python -m src.ingest.run_all` y se guardan sin modificar
 | 6 | OpenStreetMap (Overpass API) | Comunidad OSM | API sin clave | JSON | Puntos (lat/lon) | Centroide de cada municipio, subestaciones, centrales, aeropuertos, puertos, salidas de autopista, embalses, polígonos industriales, CPD existentes | Energía, Transporte, Agua, Suelo |
 | 7 | PeeringDB | PeeringDB | API sin clave | JSON | Puntos | Data centers de colocation en España y puntos neutros de Internet (IXP) | Telecomunicaciones / **Etiqueta** |
 | 8 | AEMET OpenData | AEMET | API REST con clave gratuita | JSON | Estación × mes | Temperatura media y máxima, humedad, viento, precipitación, días con Tmax ≥ 30 ºC | Climatología / Agua |
+| 8b | Open-Meteo (API histórica, reanálisis ERA5) | Open-Meteo | API sin clave | JSON | Rejilla ~80 km × día | Temperatura media y máxima, humedad, viento, precipitación, evapotranspiración. **Fuente de clima por defecto**; AEMET se usa si hay clave | Climatología / Agua |
 | 9 | Catálogo sísmico (FDSN) | EMSC (integra datos del IGN); USGS como respaldo | API sin clave | TXT/CSV | Evento (lat/lon) | Terremotos con M ≥ 3 desde 1990 | Riesgo sísmico |
 | 10 | Índice de Precios de Vivienda en Alquiler | INE | API JSON | JSON | Municipio | Precio del alquiler → aproximación del coste del suelo | Suelo / Económico |
 | 11 | Precio del mercado eléctrico | Red Eléctrica de España (REData) | API REST sin clave | JSON | Nacional × hora | €/MWh por hora (últimos 2 años) → **coste operativo** del CPD | Energía / Económico |

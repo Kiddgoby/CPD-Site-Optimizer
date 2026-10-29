@@ -49,7 +49,11 @@ def _fetch(endpoint: str, key: str):
 
 
 def run() -> None:
-    key = _api_key()
+    try:
+        key = _api_key()
+    except RuntimeError:
+        log.warning("Sin AEMET_API_KEY: se omite AEMET (el clima sale de Open-Meteo)")
+        return
     inv_path = raw_path(SOURCE, "estaciones.json")
     if not inv_path.exists():
         est = _fetch("/valores/climatologicos/inventarioestaciones/todasestaciones", key)
