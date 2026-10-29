@@ -8,6 +8,8 @@ Ingesta INE (Instituto Nacional de Estadística).
    -> renta neta media por persona por municipio.
 4. Índice de Precios de Vivienda en Alquiler por municipio -> coste del suelo.
 """
+from __future__ import annotations
+
 from config.settings import POPULATION_YEARS
 from src.ingest.common import http_get, save_raw, raw_path, log
 

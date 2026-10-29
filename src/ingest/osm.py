@@ -11,6 +11,8 @@ Se usa OSM para todo lo que necesita coordenadas:
 - Polígonos industriales -> proxy de suelo industrial disponible.
 - Espacios naturales protegidos -> riesgo regulatorio / ambiental.
 """
+from __future__ import annotations
+
 import time
 
 from config.settings import OVERPASS_URLS

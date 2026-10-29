@@ -8,6 +8,8 @@ Uso (desde la raíz del repo):
 Cada fuente es independiente: si una falla, las demás siguen.
 Los scripts son reanudables (no vuelven a bajar lo que ya existe).
 """
+from __future__ import annotations
+
 import argparse
 import traceback
 

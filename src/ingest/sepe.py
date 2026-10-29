@@ -2,6 +2,8 @@
 Ingesta SEPE: paro registrado mensual por municipio (datos abiertos).
 Catálogo: https://datos.gob.es/es/catalogo/ea0041513-paro-registrado-por-municipio
 """
+from __future__ import annotations
+
 from config.settings import CURRENT_YEAR
 from src.ingest.common import http_get, save_raw, log
 

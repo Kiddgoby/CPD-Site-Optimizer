@@ -8,6 +8,8 @@ Docs: https://www.ree.es/es/apidatos
   comunidad autónoma -> disponibilidad energética y % renovable territorial.
 - Precio horario del mercado eléctrico -> coste operativo del CPD.
 """
+from __future__ import annotations
+
 import time
 import calendar
 from datetime import date

@@ -12,6 +12,8 @@ Límites del servicio: 100 puntos por petición, 1 petición/s, 1.000/día.
 Requiere haber descargado antes los municipios de OSM (src/ingest/osm.py).
 El script es reanudable por lotes.
 """
+from __future__ import annotations
+
 import json
 import time
 

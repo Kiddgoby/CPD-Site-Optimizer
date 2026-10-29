@@ -3,6 +3,8 @@ Ingesta de sismicidad: catálogo de terremotos (servicio FDSN del EMSC, que
 integra los datos del IGN). Se usa para calcular el riesgo sísmico de cada
 municipio (nº y magnitud máxima de terremotos en un radio).
 """
+from __future__ import annotations
+
 from config.settings import BBOX_PENINSULA, BBOX_CANARIAS
 from src.ingest.common import http_get, save_raw, log
 

@@ -5,6 +5,8 @@ Ingesta PeeringDB (API pública, sin clave): https://www.peeringdb.com/apidocs/
   nº de redes, IXPs y operadores -> etiqueta "ya hay CPD" y conectividad.
 - Puntos neutros de Internet (IXP) en España -> distancia a nodos principales.
 """
+from __future__ import annotations
+
 from src.ingest.common import http_get, save_raw
 
 SOURCE = "peeringdb"

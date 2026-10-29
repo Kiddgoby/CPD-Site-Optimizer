@@ -15,6 +15,8 @@ La API de AEMET funciona en dos pasos: la primera llamada devuelve una URL
 temporal en el campo "datos" y la segunda descarga el contenido real.
 El script es reanudable: si se corta, al relanzarlo continúa donde lo dejó.
 """
+from __future__ import annotations
+
 import os
 import time
 from pathlib import Path

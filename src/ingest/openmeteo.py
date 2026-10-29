@@ -12,6 +12,8 @@ precipitación y evapotranspiración (ET0) -> clima y estrés hídrico.
 Límites del plan gratuito: 5.000 llamadas/hora y 10.000/día (1 año de datos
 diarios de un punto cuenta como ~26 llamadas). El script es reanudable.
 """
+from __future__ import annotations
+
 import json
 import time
 

@@ -5,6 +5,8 @@ Utilidades compartidas por todos los scripts de ingesta.
 - save_raw(): guarda el fichero en la capa raw del Data Lake y registra
   la descarga en un manifiesto (trazabilidad: fuente, URL, fecha, tamaño).
 """
+from __future__ import annotations
+
 import json
 import time
 import logging
