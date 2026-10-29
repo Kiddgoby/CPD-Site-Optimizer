@@ -21,6 +21,10 @@ Todas se descargan con `python -m src.ingest.run_all` y se guardan sin modificar
 | 7 | PeeringDB | PeeringDB | API sin clave | JSON | Puntos | Data centers de colocation en España y puntos neutros de Internet (IXP) | Telecomunicaciones / **Etiqueta** |
 | 8 | AEMET OpenData | AEMET | API REST con clave gratuita | JSON | Estación × mes | Temperatura media y máxima, humedad, viento, precipitación, días con Tmax ≥ 30 ºC | Climatología / Agua |
 | 9 | Catálogo sísmico (FDSN) | EMSC (integra datos del IGN); USGS como respaldo | API sin clave | TXT/CSV | Evento (lat/lon) | Terremotos con M ≥ 3 desde 1990 | Riesgo sísmico |
+| 10 | Índice de Precios de Vivienda en Alquiler | INE | API JSON | JSON | Municipio | Precio del alquiler → aproximación del coste del suelo | Suelo / Económico |
+| 11 | Precio del mercado eléctrico | Red Eléctrica de España (REData) | API REST sin clave | JSON | Nacional × hora | €/MWh por hora (últimos 2 años) → **coste operativo** del CPD | Energía / Económico |
+| 12 | Espacios naturales protegidos | OpenStreetMap (Red Natura 2000, parques…) | Overpass API | JSON | Puntos | Proximidad a zonas protegidas → **riesgo regulatorio/ambiental** | Legislación |
+| 13 | Modelo digital de elevaciones EU-DEM 25 m (SRTM en Canarias) | Copernicus vía OpenTopoData | API sin clave | JSON | Punto | Altitud y pendiente de cada municipio | Terreno / Topografía |
 
 ## 2. Fuentes de descarga manual (opcionales)
 
@@ -30,7 +34,10 @@ No tienen API estable, así que se descargan a mano y se dejan en `data/raw/manu
 |---|---|---|---|
 | Informe de Cobertura de Banda Ancha (Excel por municipio) | [conectemos.digital.gob.es](https://conectemos.digital.gob.es) — SETID | % cobertura FTTH ≥ 100 Mbps, % 5G | Distancia al IXP / CPD más cercano |
 | Líneas límite municipales | Centro de Descargas del CNIG (IGN) | Superficie → densidad de población | Sin densidad |
-| Precio del suelo urbano | Ministerio de Vivienda y Agenda Urbana (estadística de precio de suelo) | €/m² | Renta + población (presión urbana) |
+| Precio del suelo urbano y valor tasado de la vivienda | Ministerio de Vivienda y Agenda Urbana | €/m² | Índice de alquiler del INE + renta |
+| Red Natura 2000 (polígonos oficiales) | MITECO, Banco de Datos de la Naturaleza | % del término municipal protegido | Proximidad a espacios protegidos de OSM |
+| Consumo eléctrico por municipio | Solo lo publican algunas CCAA (p. ej. ICAEN en Cataluña) | MWh/año | Demanda de la CCAA (REE) repartida por población |
+| Regulación por comunidad autónoma | `data/reference/regulacion_ccaa.csv` (plantilla a rellenar por el equipo con leyes de agilización de proyectos, incentivos y tramitación) | Puntuación regulatoria 1-5 | Neutra (3) |
 
 ## 3. Cómo se calcula cada variable territorial
 
@@ -48,6 +55,10 @@ No tienen API estable, así que se descargan a mano y se dejan en `data/raw/manu
 | Puntos neutros, distancia a nodos | Distancia al IXP más cercano | 7 |
 | Suelo industrial disponible | Nº de polígonos industriales en el municipio / en 10 km | 6 |
 | Riesgo sísmico | Nº de terremotos M ≥ 3 en 50 km y magnitud máxima | 9 |
+| Coste del suelo (aprox.) | Índice de alquiler del municipio (o de la provincia si falta) | 10 |
+| Coste energético | Precio medio anual €/MWh y volatilidad (desviación típica horaria) × consumo previsto del CPD | 11 |
+| Riesgo regulatorio / ambiental | Nº de espacios protegidos en 10 km y distancia al más cercano + puntuación regulatoria de la CCAA | 12, manual |
+| Altitud y pendiente | Altitud del centroide; pendiente = máx. desnivel a 1 km / 1.000 m | 13 |
 
 ## 4. Variable objetivo (viabilidad)
 

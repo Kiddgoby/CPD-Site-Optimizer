@@ -6,6 +6,7 @@ Ingesta INE (Instituto Nacional de Estadística).
    -> población actual y evolución demográfica.
 3. Atlas de Distribución de Renta de los Hogares (ADRH) vía API JSON
    -> renta neta media por persona por municipio.
+4. Índice de Precios de Vivienda en Alquiler por municipio -> coste del suelo.
 """
 from config.settings import POPULATION_YEARS
 from src.ingest.common import http_get, save_raw, raw_path, log
@@ -71,10 +72,39 @@ def download_renta() -> None:
             log.error("Tabla ADRH %s fallida: %s", tid, e)
 
 
+def download_alquiler() -> None:
+    """
+    Índice de Precios de Vivienda en Alquiler (IPVA, estadística experimental).
+    Se busca la operación por nombre para no depender de un id fijo y se
+    descargan sus tablas con desglose municipal -> proxy del coste del suelo.
+    """
+    ops = http_get(f"{API}/OPERACIONES_DISPONIBLES").json()
+    ipva = [o for o in ops if "alquiler" in o.get("Nombre", "").lower()]
+    save_raw(SOURCE, "alquiler/operaciones.json", ipva, f"{API}/OPERACIONES_DISPONIBLES")
+    if not ipva:
+        log.error("No se encontró la operación de alquiler en el INE")
+        return
+    for op in ipva:
+        tablas = http_get(f"{API}/TABLAS_OPERACION/{op['Id']}").json()
+        for t in tablas:
+            if "municipio" not in t.get("Nombre", "").lower():
+                continue
+            tid = t["Id"]
+            if raw_path(SOURCE, f"alquiler/tabla_{tid}.json").exists():
+                continue
+            url = f"{API}/DATOS_TABLA/{tid}"
+            try:
+                save_raw(SOURCE, f"alquiler/tabla_{tid}.json",
+                         {"tabla": t, "datos": http_get(url, params={"nult": 1}).json()}, url)
+            except Exception as e:
+                log.error("Tabla alquiler %s: %s", tid, e)
+
+
 def run() -> None:
     download_municipios()
     download_poblacion()
     download_renta()
+    download_alquiler()
 
 
 if __name__ == "__main__":

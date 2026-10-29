@@ -11,7 +11,7 @@ Los scripts son reanudables (no vuelven a bajar lo que ya existe).
 import argparse
 import traceback
 
-from src.ingest import ine, sepe, ree, osm, peeringdb, aemet, sismicidad
+from src.ingest import ine, sepe, ree, osm, peeringdb, aemet, sismicidad, topografia
 from src.ingest.common import log
 
 SOURCES = {
@@ -21,6 +21,7 @@ SOURCES = {
     "peeringdb": peeringdb.run,
     "sismicidad": sismicidad.run,
     "osm": osm.run,        # lenta (~10-20 min)
+    "topografia": topografia.run,  # necesita OSM antes (~10 min)
     "aemet": aemet.run,    # lenta (~40 min) y necesita API key
 }
 

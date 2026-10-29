@@ -6,8 +6,11 @@ Docs: https://www.ree.es/es/apidatos
   para predecir la demanda a 10 años.
 - Demanda anual y estructura de generación (renovable / no renovable) por
   comunidad autónoma -> disponibilidad energética y % renovable territorial.
+- Precio horario del mercado eléctrico -> coste operativo del CPD.
 """
 import time
+import calendar
+from datetime import date
 
 from config.settings import REE_START_YEAR, CURRENT_YEAR, REE_CCAA_IDS
 from src.ingest.common import http_get, save_raw, log
@@ -54,9 +57,31 @@ def download_ccaa() -> None:
             time.sleep(1)
 
 
+def download_precios() -> None:
+    """
+    Precio horario del mercado eléctrico (€/MWh) de los últimos 2 años,
+    mes a mes (la API limita los datos horarios a ~1 mes por petición).
+    Sirve para estimar el coste operativo energético del CPD.
+    """
+    for y in range(CURRENT_YEAR - 2, CURRENT_YEAR + 1):
+        for m in range(1, 13):
+            if y == CURRENT_YEAR and m > date.today().month:
+                break
+            dest = f"precios_hora/{y}_{m:02d}.json"
+            last = calendar.monthrange(y, m)[1]
+            try:
+                data = _get("mercados", "precios-mercados-tiempo-real",
+                            f"{y}-{m:02d}-01T00:00", f"{y}-{m:02d}-{last}T23:59", "hour")
+                save_raw(SOURCE, dest, data, f"{BASE}/mercados/precios-mercados-tiempo-real")
+            except Exception as e:
+                log.error("Precios %d-%02d: %s", y, m, e)
+            time.sleep(1)
+
+
 def run() -> None:
     download_demanda_nacional()
     download_ccaa()
+    download_precios()
 
 
 if __name__ == "__main__":

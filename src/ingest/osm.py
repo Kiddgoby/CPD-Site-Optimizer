@@ -9,6 +9,7 @@ Se usa OSM para todo lo que necesita coordenadas:
 - Aeropuertos, puertos, salidas de autopista -> transporte y logística.
 - Embalses -> disponibilidad hídrica.
 - Polígonos industriales -> proxy de suelo industrial disponible.
+- Espacios naturales protegidos -> riesgo regulatorio / ambiental.
 """
 import time
 
@@ -28,6 +29,8 @@ QUERIES = {
     "autopistas": 'node["highway"="motorway_junction"](area.es);out;',
     "embalses": 'nwr["water"="reservoir"]["name"](area.es);out center tags;',
     "industrial": 'way["landuse"="industrial"](area.es);out center;',
+    # Espacios protegidos (Red Natura 2000, parques naturales...) -> riesgo regulatorio
+    "protegidos": '(nwr["boundary"="protected_area"](area.es);nwr["leisure"="nature_reserve"](area.es);nwr["boundary"="national_park"](area.es););out center tags;',
 }
 
 
