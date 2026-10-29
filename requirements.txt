@@ -1,0 +1,13 @@
+pandas>=2.2
+numpy>=1.26
+requests>=2.31
+openpyxl>=3.1
+pyarrow>=15.0
+duckdb>=1.0
+scikit-learn>=1.4
+statsmodels>=0.14
+matplotlib>=3.8
+seaborn>=0.13
+plotly>=5.20
+streamlit>=1.35
+tqdm>=4.66
