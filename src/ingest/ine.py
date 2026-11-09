@@ -6,11 +6,10 @@ Ingesta INE (Instituto Nacional de Estadística).
    -> población actual y evolución demográfica.
 3. Atlas de Distribución de Renta de los Hogares (ADRH) vía API JSON
    -> renta neta media por persona por municipio.
-4. Índice de Precios de Vivienda en Alquiler por municipio -> coste del suelo.
+4. Índice de Precios de Vivienda en Alquiler por municipio -> tendencia del alquiler.
 """
 from __future__ import annotations
 
-from config.settings import POPULATION_YEARS
 from src.ingest.common import http_get, save_raw, raw_path, log
 
 SOURCE = "ine"
@@ -31,20 +30,31 @@ def download_municipios() -> None:
 
 
 def download_poblacion() -> None:
-    """Fichero pobmunYY.xlsx con la población de todos los municipios."""
-    for year in POPULATION_YEARS:
-        # Si el año pedido aún no está publicado, se prueban los anteriores
-        for y in range(year, year - 4, -1):
-            yy = str(y)[2:]
-            url = f"https://www.ine.es/pob_xls/pobmun{yy}.xlsx"
-            if raw_path(SOURCE, f"pobmun_{y}.xlsx").exists():
-                break
-            try:
-                r = http_get(url, retries=1)
-                save_raw(SOURCE, f"pobmun_{y}.xlsx", r.content, url)
-                break
-            except Exception:
-                log.info("pobmun%s.xlsx no disponible", yy)
+    """
+    Cifras oficiales del Padrón por municipio desde la API del INE (tabla 29005,
+    operación 22): todos los municipios, con su código INE, de 2015 al último año.
+
+    Antes se usaban los ficheros pobmunYY.xlsx, pero el INE dejó de publicarlos
+    a partir de 2023 (dan 404) y el script se quedaba con los datos de 2022.
+    Se guarda un JSON compacto {codigo_ine: {año: habitantes}}.
+    """
+    if raw_path(SOURCE, "padron_municipios.json").exists():
+        log.info("Padrón ya descargado")
+        return
+    url = f"{API}/DATOS_TABLA/29005"
+    # tip=M añade los metadatos -> así viene el código INE (los nombres se repiten
+    # entre provincias); nult=11 -> últimos 11 años (2015-2025)
+    series = http_get(url, params={"nult": 11, "tip": "M"}).json()
+    out = {}
+    for s in series:
+        meta = {m.get("FK_Variable"): m for m in s.get("MetaData", [])}
+        muni, sexo = meta.get(19), meta.get(18)          # 19 = municipio, 18 = sexo
+        if not muni or not sexo or sexo.get("Nombre") != "Total":
+            continue
+        out[muni["Codigo"]] = {"nombre": muni["Nombre"],
+                               **{str(d["Anyo"]): d["Valor"] for d in s["Data"]}}
+    log.info("Padrón: %d municipios", len(out))
+    save_raw(SOURCE, "padron_municipios.json", out, url)
 
 
 def download_renta() -> None:
@@ -60,19 +70,27 @@ def download_renta() -> None:
     log.info("ADRH: %d tablas provinciales de renta", len(objetivo))
     for t in objetivo:
         tid = t["Id"]
-        dest = raw_path(SOURCE, f"adrh/renta_{tid}.json")
+        dest = raw_path(SOURCE, f"adrh_cod/renta_{tid}.json")
         if dest.exists():
             continue
         url = f"{API}/DATOS_TABLA/{tid}"
         try:
-            data = http_get(url, params={"nult": 1}).json()
+            # tip=M -> metadatos con el código INE del municipio (los nombres se repiten)
+            data = http_get(url, params={"nult": 1, "tip": "M"}).json()
+            if not isinstance(data, list):
+                # Provincias grandes: "restricciones de volumen" -> se pide solo el
+                # indicador que usamos (variable 482 = "Renta neta media por persona")
+                data = http_get(url, params={"nult": 1, "tip": "M", "tv": "482:284048"}).json()
             if not isinstance(data, list):  # el INE devuelve a veces un mensaje de error
-                log.warning("Tabla ADRH %s sin datos: %s", tid, str(data)[:120])
+                # Pasa con la tabla nacional (toda España junta, id 30824): no importa,
+                # las 53 tablas provinciales ya cubren todos los municipios
+                log.info("Tabla ADRH %s no disponible (%s); se cubre con las provinciales",
+                         tid, str(data)[:80])
                 continue
             # Solo nos interesan series municipales (no distritos ni secciones)
             data = [s for s in data if "distrito" not in s["Nombre"].lower()
                     and "sección" not in s["Nombre"].lower()]
-            save_raw(SOURCE, f"adrh/renta_{tid}.json", data, url)
+            save_raw(SOURCE, f"adrh_cod/renta_{tid}.json", data, url)
         except Exception as e:
             log.error("Tabla ADRH %s fallida: %s", tid, e)
 
@@ -80,8 +98,10 @@ def download_renta() -> None:
 def download_alquiler() -> None:
     """
     Índice de Precios de Vivienda en Alquiler (IPVA, estadística experimental).
-    Se busca la operación por nombre para no depender de un id fijo y se
-    descargan sus tablas con desglose municipal -> proxy del coste del suelo.
+    OJO: es un ÍNDICE (base 2015 = 100 en cada municipio), así que mide cuánto
+    ha subido el alquiler, NO cuánto cuesta: sirve como tendencia, no para
+    comparar el coste del suelo entre municipios. Para eso está
+    src/ingest/vivienda.py (valor tasado en €/m²).
     """
     ops = http_get(f"{API}/OPERACIONES_DISPONIBLES").json()
     ipva = [o for o in ops if "alquiler" in o.get("Nombre", "").lower()]
@@ -100,7 +120,7 @@ def download_alquiler() -> None:
             url = f"{API}/DATOS_TABLA/{tid}"
             try:
                 save_raw(SOURCE, f"alquiler/tabla_{tid}.json",
-                         {"tabla": t, "datos": http_get(url, params={"nult": 1}).json()}, url)
+                         {"tabla": t, "datos": http_get(url, params={"nult": 1, "tip": "M"}).json()}, url)
             except Exception as e:
                 log.error("Tabla alquiler %s: %s", tid, e)
 

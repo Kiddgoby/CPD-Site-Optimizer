@@ -10,6 +10,8 @@ Se usa OSM para todo lo que necesita coordenadas:
 - Embalses -> disponibilidad hídrica.
 - Polígonos industriales -> proxy de suelo industrial disponible.
 - Espacios naturales protegidos -> riesgo regulatorio / ambiental.
+- Universidades -> disponibilidad de personal técnico cualificado.
+- Parques de bomberos -> tiempo de respuesta ante incendios (seguridad física).
 """
 from __future__ import annotations
 
@@ -33,6 +35,10 @@ QUERIES = {
     "industrial": 'way["landuse"="industrial"](area.es);out center;',
     # Espacios protegidos (Red Natura 2000, parques naturales...) -> riesgo regulatorio
     "protegidos": '(nwr["boundary"="protected_area"](area.es);nwr["leisure"="nature_reserve"](area.es);nwr["boundary"="national_park"](area.es););out center tags;',
+    # Talento: universidades (personal técnico para operar el CPD)
+    "universidades": 'nwr["amenity"="university"](area.es);out center tags;',
+    # Seguridad: parques de bomberos
+    "bomberos": 'nwr["amenity"="fire_station"](area.es);out center tags;',
 }
 
 
