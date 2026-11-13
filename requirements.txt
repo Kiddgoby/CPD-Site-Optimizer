@@ -11,3 +11,4 @@ seaborn>=0.13
 plotly>=5.20
 streamlit>=1.35
 tqdm>=4.66
+xlrd>=2.0

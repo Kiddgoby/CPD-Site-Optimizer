@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Ingesta: todas las fuentes",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.ingest.run_all",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Ingesta: elegir fuentes",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.ingest.run_all",
+      "args": "${input:fuentes}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "fuentes",
+      "type": "promptString",
+      "description": "Fuentes separadas por espacio (ine sepe ree peeringdb sismicidad osm topografia openmeteo aemet)",
+      "default": "--only ine"
+    }
+  ]
+}
