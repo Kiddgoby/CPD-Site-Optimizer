@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import traceback
 
-from src.ingest import (ine, sepe, ree, osm, peeringdb, aemet, sismicidad, topografia, openmeteo,
+from src.ingest import (ine, sepe, ree, osm, osm_pbf, peeringdb, aemet, sismicidad, topografia, openmeteo,
                         ree_capacidad, cables, cpd_observatorio, vivienda, inundaciones)
 from src.ingest.common import log
 
@@ -28,7 +28,8 @@ SOURCES = {
     "ree": ree.run,
     "peeringdb": peeringdb.run,
     "sismicidad": sismicidad.run,
-    "osm": osm.run,        # lenta (~10-20 min)
+    "osm_pbf": osm_pbf.run,  # OSM desde Geofabrik (~1,5 GB, ~15-30 min): no depende de Overpass
+    "osm": osm.run,        # Overpass: solo baja lo que osm_pbf no haya generado
     "topografia": topografia.run,  # necesita OSM antes (~10 min)
     "openmeteo": openmeteo.run,    # clima sin clave (~5 min)
     "aemet": aemet.run,    # opcional: solo si hay AEMET_API_KEY en .env

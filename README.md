@@ -38,13 +38,32 @@ python -m src.ingest.run_all --only ine sepe    # solo algunas fuentes
 ```
 Los scripts son reanudables: si se cortan, al relanzarlos siguen donde lo dejaron.
 
+## 2. ETL (capa processed)
+
+```bash
+python -m src.etl.ree_nudos          # capacidad de red por municipio
+python -m src.etl.cpd_espana         # BBDD de CPD + competencia por municipio
+python -m src.etl.variables_extra    # cables, inundaciones, suelo, aridez...
+python -m src.etl.socioeconomico     # población, renta y paro
+python -m src.etl.sismicidad         # terremotos cercanos
+python -m src.etl.geografia          # municipio -> provincia -> CCAA
+```
+
+## 3. Data Warehouse (DuckDB)
+
+```bash
+python -m src.warehouse.build        # crea data/warehouse/cpd_warehouse.duckdb
+```
+Comprueba que no se pierde ningún municipio (8.135) y deja la vista `vw_features_municipio` lista para el modelo. Detalle en [docs/02_data_warehouse.md](docs/02_data_warehouse.md).
+
 ## Estructura
 
 | Carpeta | Contenido |
 |---|---|
 | `config/` | Rutas, años y parámetros comunes |
 | `src/ingest/` | Un script por fuente de datos |
-| `src/etl/` | Limpieza, transformación y carga al Data Warehouse |
+| `src/etl/` | Limpieza y transformación (raw -> processed) |
+| `src/warehouse/` | Esquema y carga del Data Warehouse (processed -> DuckDB) |
 | `src/models/` | Modelos de ML y series temporales |
 | `src/dashboard/` | Simulador y cuadro de mando (Streamlit) |
 | `docs/` | Documentación del proyecto (informes del entregable) |
@@ -52,6 +71,7 @@ Los scripts son reanudables: si se cortan, al relanzarlos siguen donde lo dejaro
 
 ## Documentación
 - [Informe de origen de datos](docs/01_origen_datos.md)
+- [Data Warehouse](docs/02_data_warehouse.md)
 
 ## Hoja de ruta
 - [x] Fase 1: fuentes de datos e ingesta
