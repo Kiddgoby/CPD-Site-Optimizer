@@ -13,3 +13,4 @@ streamlit>=1.35
 tqdm>=4.66
 xlrd>=2.0
 osmium>=4.0
+python-calamine>=0.2
