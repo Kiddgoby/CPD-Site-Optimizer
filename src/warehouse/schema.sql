@@ -111,6 +111,20 @@ CREATE TABLE dim_conectividad (
     n_bomberos_30km             INTEGER
 );
 
+CREATE TABLE dim_entorno (
+    ine                    VARCHAR PRIMARY KEY REFERENCES dim_geografia (ine),
+    altitud_m              DOUBLE,
+    pendiente_media_pct    DOUBLE,
+    dist_embalse_km        DOUBLE,
+    n_embalses_30km        INTEGER,
+    dist_rio_principal_km  DOUBLE,
+    dist_industrial_km     DOUBLE,
+    n_industrial_10km      INTEGER,
+    dist_autopista_km      DOUBLE,
+    dist_puerto_km         DOUBLE,
+    dist_aeropuerto_km     DOUBLE
+);
+
 -- ------------------------------------------------------------ Tabla de hechos
 -- Claves hacia todas las dimensiones + la etiqueta del modelo y sus medidas.
 CREATE TABLE fact_municipio (
@@ -126,7 +140,8 @@ CREATE TABLE fact_municipio (
     FOREIGN KEY (ine) REFERENCES dim_clima (ine),
     FOREIGN KEY (ine) REFERENCES dim_socioeconomica (ine),
     FOREIGN KEY (ine) REFERENCES dim_riesgos (ine),
-    FOREIGN KEY (ine) REFERENCES dim_conectividad (ine)
+    FOREIGN KEY (ine) REFERENCES dim_conectividad (ine),
+    FOREIGN KEY (ine) REFERENCES dim_entorno (ine)
 );
 
 -- --------------------------------------------------- Tablas con otro grano
@@ -189,7 +204,8 @@ SELECT
     cl.* EXCLUDE (ine),
     s.* EXCLUDE (ine),
     rg.* EXCLUDE (ine),
-    cn.* EXCLUDE (ine)
+    cn.* EXCLUDE (ine),
+    en.* EXCLUDE (ine)
 FROM fact_municipio f
 JOIN dim_geografia      g  USING (ine)
 JOIN dim_provincia      p  ON p.cod_provincia = f.cod_provincia
@@ -199,4 +215,5 @@ JOIN dim_competencia    k  USING (ine)
 JOIN dim_clima          cl USING (ine)
 JOIN dim_socioeconomica s  USING (ine)
 JOIN dim_riesgos        rg USING (ine)
-JOIN dim_conectividad   cn USING (ine);
+JOIN dim_conectividad   cn USING (ine)
+JOIN dim_entorno        en USING (ine);

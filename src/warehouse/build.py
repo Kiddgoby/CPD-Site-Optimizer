@@ -17,7 +17,7 @@ Comprobaciones antes de dar por buena la carga (si alguna falla, el
 - Las claves foráneas las valida DuckDB al insertar.
 
 Requisitos: haber ejecutado la ETL (python -m src.etl.<script>) para
-geografia, socioeconomico, sismicidad, ree_nudos, cpd_espana y variables_extra.
+geografia, socioeconomico, sismicidad, ree_nudos, cpd_espana, variables_extra y entorno.
 
 Salida: data/warehouse/cpd_warehouse.duckdb
 Uso: python -m src.warehouse.build
@@ -48,6 +48,7 @@ FUENTES = {
     "src_comp": (PROCESSED_DIR / "municipio_competencia_cpd.csv", "cpd_espana"),
     "src_cpd": (PROCESSED_DIR / "cpd_espana.csv", "cpd_espana"),
     "src_extra": (PROCESSED_DIR / "municipio_variables_extra.csv", "variables_extra"),
+    "src_entorno": (PROCESSED_DIR / "municipio_entorno.csv", "entorno"),
     "src_reg": (DATA_DIR / "reference" / "regulacion_ccaa.csv", None),
 }
 # Columnas que son códigos: se leen como texto para no perder los ceros a la izquierda
@@ -84,6 +85,7 @@ CARGAS = {
                amarres_cable_100km, dist_universidades_km, n_universidades_30km,
                dist_bomberos_km, n_bomberos_30km
         FROM src_extra""",
+    "dim_entorno": "SELECT * EXCLUDE (municipio) FROM src_entorno",
     "fact_municipio": """
         SELECT g.ine, g.cod_provincia, g.cod_ccaa,
                c.tiene_cpd_operativo::BOOLEAN AS tiene_cpd_operativo,
@@ -98,7 +100,7 @@ CARGAS = {
     "nudo_ree": "SELECT row_number() OVER () AS id_nudo, * FROM src_nudos",
 }
 TABLAS_MUNICIPIO = ["dim_geografia", "dim_red_electrica", "dim_competencia", "dim_clima",
-                    "dim_socioeconomica", "dim_riesgos", "dim_conectividad", "fact_municipio"]
+                    "dim_socioeconomica", "dim_riesgos", "dim_conectividad", "dim_entorno", "fact_municipio"]
 
 
 def _sql_texto(s: str) -> str:
@@ -114,8 +116,9 @@ def _registrar_fuentes(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
             raise FileNotFoundError(f"Falta {path}. Genéralo con: {como}")
         cols = pd.read_csv(path, nrows=0).columns
         tipos = ", ".join(f"{_sql_texto(c)}: 'VARCHAR'" for c in cols if c in CODIGOS)
+        extra = f", types = {{{tipos}}}" if tipos else ""
         con.execute(f"CREATE TEMP TABLE {vista} AS SELECT * FROM read_csv("
-                    f"{_sql_texto(path.as_posix())}, header = true, types = {{{tipos}}})")
+                    f"{_sql_texto(path.as_posix())}, header = true{extra})")
         filas[vista] = con.execute(f"SELECT count(*) FROM {vista}").fetchone()[0]
     return filas
 

@@ -47,6 +47,7 @@ python -m src.etl.variables_extra    # cables, inundaciones, suelo, aridez...
 python -m src.etl.socioeconomico     # población, renta y paro
 python -m src.etl.sismicidad         # terremotos cercanos
 python -m src.etl.geografia          # municipio -> provincia -> CCAA
+python -m src.etl.entorno            # altitud, pendiente, agua, suelo industrial y accesos
 ```
 
 ## 3. Data Warehouse (DuckDB)

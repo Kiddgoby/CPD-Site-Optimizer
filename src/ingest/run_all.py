@@ -19,7 +19,7 @@ import argparse
 import traceback
 
 from src.ingest import (ine, sepe, ree, osm, osm_pbf, peeringdb, aemet, sismicidad, topografia, openmeteo,
-                        ree_capacidad, cables, cpd_observatorio, vivienda, inundaciones)
+                        ree_capacidad, cables, cpd_observatorio, vivienda, inundaciones, hidrografia)
 from src.ingest.common import log
 
 SOURCES = {
@@ -38,6 +38,7 @@ SOURCES = {
     "cables": cables.run,                      # cables submarinos (TeleGeography)
     "cpd_observatorio": cpd_observatorio.run,  # directorio de CPD de España (~4 min)
     "vivienda": vivienda.run,                  # valor tasado €/m² (coste del suelo)
+    "hidrografia": hidrografia.run,            # ríos principales (Natural Earth, ~1 min)
     "inundaciones": inundaciones.run,          # zonas inundables SNCZI (necesita OSM, ~30-60 min)
 }
 
