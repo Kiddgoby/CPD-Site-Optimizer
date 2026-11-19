@@ -16,6 +16,7 @@ python -m src.etl.variables_extra
 python -m src.etl.socioeconomico
 python -m src.etl.sismicidad
 python -m src.etl.geografia
+python -m src.etl.entorno
 
 # Data Warehouse (capa gold)
 python -m src.warehouse.build
@@ -38,6 +39,7 @@ erDiagram
     dim_socioeconomica ||--|| fact_municipio : ine
     dim_riesgos ||--|| fact_municipio : ine
     dim_conectividad ||--|| fact_municipio : ine
+    dim_entorno ||--|| fact_municipio : ine
     dim_geografia ||--o{ fact_cpd : ine
 
     fact_municipio {
@@ -66,10 +68,11 @@ Las dimensiones temáticas tienen una fila por municipio (relación 1:1 con el h
 | `dim_socioeconomica` | 8.135 | municipio | Población (2015 y 2025), crecimiento, renta 2024, paro (12 meses), valor tasado €/m² | `municipio_socioeconomico.csv`, `municipio_variables_extra.csv` |
 | `dim_riesgos` | 8.135 | municipio | % inundable (100 y 500 años), terremotos en 50 km, magnitud máxima | `municipio_variables_extra.csv`, `municipio_sismicidad.csv` |
 | `dim_conectividad` | 8.135 | municipio | Cables submarinos, universidades, bomberos | `municipio_variables_extra.csv` |
+| `dim_entorno` | 8.135 | municipio | Altitud y pendiente media, distancia a embalse (y nº en 30 km), a río principal, a suelo industrial (y nº en 10 km), a autopista, puerto y aeropuerto | `municipio_entorno.csv` |
 | `fact_cpd` | 278 | CPD | Cada CPD: operador, estado, MW, coordenadas, municipio | `cpd_espana.csv` |
 | `nudo_ree` | 937 | nudo de REE | Capacidad de acceso para demanda de cada nudo | `ree_nudos_capacidad.csv` |
 | `meta_carga` | 12 | tabla | Trazabilidad: CSV de origen, filas y fecha de carga | — |
-| `vw_features_municipio` (vista) | 8.135 | municipio | Todo unido en una tabla plana (56 columnas) para el modelo y el dashboard | — |
+| `vw_features_municipio` (vista) | 8.135 | municipio | Todo unido en una tabla plana (66 columnas) para el modelo y el dashboard | — |
 
 ## 4. Comprobaciones de calidad
 
@@ -105,4 +108,7 @@ con.execute("""
 - **Tasa de paro aproximada:** parados / población total. El SEPE no publica población activa por municipio. Los valores "<5" del SEPE se cuentan como 2,5.
 - **Territorios compartidos:** OSM incluye 3 "comunidades" o "cotos" de tierras compartidas entre pueblos (INE 09711, 37701, 53053). No tienen población ni paro; se mantienen para no perder filas. El de código de provincia 53 se asigna a la provincia del municipio más cercano (León).
 - **Sismicidad:** es actividad observada (EMSC, M ≥ 3 desde 1998), no la peligrosidad oficial de la norma NCSE-02. `mag_max_50km` vacío significa que no hubo terremotos en 50 km.
+- **Ríos:** vienen de Natural Earth 1:10m y solo incluyen los ríos principales (66 tramos en España); en Canarias no hay, por lo que `dist_rio_principal_km` es muy grande allí. Los embalses (OSM) cubren mejor el agua disponible. Mejorable con la red hidrográfica del MITECO.
+- **Topografía:** la pendiente se calcula con 4 alturas a ~1 km del centroide (EU-DEM 25 m / SRTM), no con el relieve completo del término municipal.
+- **Distancias de entorno:** son en línea recta al centro del elemento de OSM, no por carretera.
 - **Zonas inundables:** el SNCZI solo cartografía los tramos con riesgo significativo. Un 0 % significa "sin zona inundable cartografiada", no "riesgo nulo".
