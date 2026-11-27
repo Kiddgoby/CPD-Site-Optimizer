@@ -9,13 +9,13 @@ Uso:
     from src.models.split import cargar_particion
     X_train, y_train, X_val, y_val, X_test, y_test = cargar_particion()
 """
-from pathlib import Path
-
 import duckdb
 import pandas as pd
+from config.settings import WAREHOUSE_DIR
+
 from sklearn.model_selection import StratifiedGroupKFold
 
-DB = Path("data/warehouse/cpd_warehouse.duckdb")
+DB = WAREHOUSE_DIR / "cpd_warehouse.duckdb"
 ETIQUETA = "tiene_cpd_operativo"
 GRUPO = "provincia"
 SEMILLA = 178  # elegida entre 300 probadas: es la que más se acerca a 60/20/20 (municipios y positivos)

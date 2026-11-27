@@ -10,15 +10,28 @@ hace atractivos para CPD a Bilbao, Barcelona, Valencia, Málaga o Canarias.
 """
 from __future__ import annotations
 
+import json
 import time
 
-from src.ingest.common import http_get, save_raw, log
+from config.settings import RAW_DIR
+from src.ingest.common import (APIRequestError, cache_is_fresh, file_sha256, http_get,
+                               save_raw, read_watermark, write_watermark, log)
 
 SOURCE = "cables"
 API = "https://www.submarinecablemap.com/api/v3"
 
 
 def run() -> None:
+    cached = RAW_DIR / SOURCE / "amarres_es.json"
+    if cache_is_fresh(cached, 30 * 24 * 60 * 60,
+                      validator=lambda p: isinstance(json.loads(
+                          p.read_text(encoding="utf-8")), list) and bool(
+                              json.loads(p.read_text(encoding="utf-8")))):
+        if read_watermark(SOURCE) is None:
+            write_watermark(SOURCE, f"snapshot-sha256:{file_sha256(cached)}",
+                            file=cached.name)
+        log.info("Cables: se reutilizan datos válidos (%s)", cached.name)
+        return
     geo = http_get(f"{API}/landing-point/landing-point-geo.json").json()
     es = [f for f in geo["features"] if f["properties"].get("name", "").endswith(", Spain")]
     log.info("Cables: %d puntos de amarre en España", len(es))
@@ -28,9 +41,9 @@ def run() -> None:
         lon, lat = f["geometry"]["coordinates"]
         try:
             det = http_get(f"{API}/landing-point/{pid}.json").json()
-        except Exception as e:
-            log.warning("Amarre %s sin detalle: %s", pid, e)
-            det = {}
+        except APIRequestError as e:
+            raise APIRequestError(f"Amarre {pid} sin detalle; no se guardará una descarga parcial: {e}",
+                                  status_code=e.status_code) from e
         cables = det.get("cables", [])
         puntos.append({
             "id": pid,
@@ -46,7 +59,10 @@ def run() -> None:
                         "planificado": c.get("is_planned")} for c in cables],
         })
         time.sleep(0.3)
-    save_raw(SOURCE, "amarres_es.json", puntos, f"{API}/landing-point/")
+    if not puntos:
+        raise ValueError("La API de cables no devolvió puntos de amarre para España")
+    path = save_raw(SOURCE, "amarres_es.json", puntos, f"{API}/landing-point/")
+    write_watermark(SOURCE, f"snapshot-sha256:{file_sha256(path)}", file=path.name)
 
 
 if __name__ == "__main__":

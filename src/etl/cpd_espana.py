@@ -14,8 +14,8 @@ incluido se considera el mismo CPD (PeeringDB aporta sus redes/IXP al
 registro existente).
 
 Salidas:
-    data/processed/cpd_espana.csv              un CPD por fila
-    data/processed/municipio_competencia_cpd.csv
+    data/silver/cpd_espana.parquet              un CPD por fila
+    data/silver/municipio_competencia_cpd.parquet
         n y MW de CPD operativos / en cartera (construcción + planificación)
         en el municipio y en 50 km, distancia al CPD operativo más cercano y
         la etiqueta tiene_cpd_operativo para el modelo.
@@ -32,8 +32,11 @@ import pandas as pd
 
 from config.settings import RAW_DIR, PROCESSED_DIR
 from src.etl.geo import municipios, distancias_km, norm_nombre, PROVINCIAS
+from src.etl.common import logged_etl, write_parquet_atomic
 from src.ingest.common import log
 
+OUTPUT_CPD = PROCESSED_DIR / "cpd_espana.parquet"
+OUTPUT_COMP = PROCESSED_DIR / "municipio_competencia_cpd.parquet"
 DEDUP_KM = 1.5
 RADIO_KM = 50
 ESTADOS = {"operativo": "operativo", "en-construccion": "en_construccion",
@@ -172,6 +175,9 @@ def competencia(cpd: pd.DataFrame, muni: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+@logged_etl("cpd_espana", "cpd_observatorio+peeringdb+osm",
+            [RAW_DIR / "cpd_observatorio", RAW_DIR / "peeringdb", RAW_DIR / "osm"],
+            [OUTPUT_CPD, OUTPUT_COMP])
 def run() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     cpd = observatorio()
@@ -181,9 +187,9 @@ def run() -> None:
     cpd = unir(cpd, osm(), [])
     muni = municipios()
     cpd = asignar_municipio(cpd, muni)
-    cpd.to_csv(PROCESSED_DIR / "cpd_espana.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(cpd, OUTPUT_CPD)
     comp = competencia(cpd, muni)
-    comp.to_csv(PROCESSED_DIR / "municipio_competencia_cpd.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(comp, OUTPUT_COMP)
     log.info("CPD España: %d registros %s", len(cpd), cpd.estado.value_counts().to_dict())
     log.info("Municipios con CPD operativo: %d", comp.tiene_cpd_operativo.sum())
 

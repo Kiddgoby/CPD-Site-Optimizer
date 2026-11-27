@@ -13,7 +13,7 @@ Variables de entorno físico y acceso por municipio:
 Las distancias son en línea recta entre el centroide del municipio y el
 centro del elemento (en los ríos, el punto más cercano de la línea).
 
-Salida: data/processed/municipio_entorno.csv
+Salida: data/silver/municipio_entorno.parquet
 Uso: python -m src.etl.entorno
 """
 from __future__ import annotations
@@ -27,8 +27,10 @@ from scipy.spatial import cKDTree
 from config.settings import RAW_DIR, PROCESSED_DIR
 from src.etl.geo import municipios
 from src.etl.variables_extra import _puntos_osm
+from src.etl.common import logged_etl, write_parquet_atomic
 from src.ingest.common import log
 
+OUTPUT = PROCESSED_DIR / "municipio_entorno.parquet"
 R_TIERRA_KM = 6371.0088
 OFFSET_M = 0.009 * 111_320   # el ingest desplaza 0,009º (~1 km) en cada dirección
 
@@ -121,6 +123,8 @@ def acceso_y_suelo(muni: pd.DataFrame, out: pd.DataFrame) -> None:
         out[col] = _distancia_mas_cercana(muni, pts)
 
 
+@logged_etl("entorno", "topografia+osm+hidrografia",
+            [RAW_DIR / "topografia", RAW_DIR / "osm", RAW_DIR / "hidrografia"], [OUTPUT])
 def run() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     muni = municipios()
@@ -128,7 +132,7 @@ def run() -> None:
     topografia(out)
     agua(muni, out)
     acceso_y_suelo(muni, out)
-    out.to_csv(PROCESSED_DIR / "municipio_entorno.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(out, OUTPUT)
     vacios = {c: int(out[c].isna().sum()) for c in out.columns[2:] if out[c].isna().any()}
     log.info("Entorno: %d municipios, columnas %s. Vacíos: %s", len(out), list(out.columns[2:]), vacios)
     log.info("Resumen:\n%s", out.iloc[:, 2:].describe().round(1).T[["min", "50%", "max"]])

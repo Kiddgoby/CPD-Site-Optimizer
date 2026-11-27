@@ -1,5 +1,5 @@
 """
-Orquestador de la ingesta: descarga todas las fuentes a data/raw/.
+Orquestador de la ingesta: descarga todas las fuentes a data/bronze/.
 
 Uso (desde la raíz del repo):
     python -m src.ingest.run_all                 # todas las fuentes

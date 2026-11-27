@@ -15,10 +15,12 @@ Se usa OSM para todo lo que necesita coordenadas:
 """
 from __future__ import annotations
 
+import json
 import time
 
-from config.settings import OVERPASS_URLS
-from src.ingest.common import http_get, save_raw, raw_path, log
+from config.settings import OVERPASS_URLS, RAW_DIR
+from src.ingest.common import (cache_is_fresh, file_sha256, http_get, log, read_watermark,
+                               save_raw, write_watermark)
 
 SOURCE = "osm"
 AREA = 'area["ISO3166-1"="ES"][admin_level=2]->.es;'
@@ -58,13 +60,23 @@ def run(only: list[str] | None = None) -> None:
     for name, body in QUERIES.items():
         if only and name not in only:
             continue
-        if raw_path(SOURCE, f"{name}.json").exists():
-            log.info("OSM %s ya descargado, se omite", name)
+        path = RAW_DIR / SOURCE / f"{name}.json"
+        validator = lambda p: isinstance(json.loads(
+            p.read_text(encoding="utf-8")).get("elements"), list)
+        watermark_key = f"{SOURCE}:{name}"
+        if cache_is_fresh(path, 30 * 24 * 60 * 60, validator=validator):
+            if read_watermark(watermark_key) is None:
+                write_watermark(watermark_key,
+                                f"snapshot-sha256:{file_sha256(path)}", file=path.name)
+            log.info("OSM %s ya está descargado y válido, se omite", name)
             continue
         log.info("OSM: descargando %s ...", name)
         try:
             data = overpass(body)
-            save_raw(SOURCE, f"{name}.json", data, "overpass")
+            path = save_raw(SOURCE, f"{name}.json", data, "overpass",
+                            validator=validator)
+            write_watermark(watermark_key, f"snapshot-sha256:{file_sha256(path)}",
+                            file=path.name, records=len(data.get("elements", [])))
             log.info("OSM %s: %d elementos", name, len(data.get("elements", [])))
         except Exception as e:
             log.error("OSM %s fallido: %s", name, e)

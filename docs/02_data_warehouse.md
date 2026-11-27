@@ -1,15 +1,15 @@
 # Data Warehouse
 
-**Motor:** DuckDB (fichero único `data/warehouse/cpd_warehouse.duckdb`, sin servidor).
+**Motor:** DuckDB (fichero único `data/gold/cpd_warehouse.duckdb`, sin servidor).
 **Modelo:** esquema en estrella. **Grano de los hechos:** un municipio, identificado por su código INE de 5 dígitos.
-**Construcción:** `python -m src.warehouse.build` lee los CSV de `data/processed` (capa silver) y crea el almacén (capa gold). Definición de las tablas: [`src/warehouse/schema.sql`](../src/warehouse/schema.sql).
+**Construcción:** `python -m src.warehouse.build` lee los Parquet de `data/silver` y la referencia CSV `data/reference/regulacion_ccaa.csv`, y crea el almacén y `features.parquet` en Gold. Definición de las tablas: [`src/warehouse/schema.sql`](../src/warehouse/schema.sql).
 
 ## 1. Cómo se genera
 
 Desde la raíz del repo, después de la ingesta (`python -m src.ingest.run_all`):
 
 ```bash
-# ETL (capa silver): data/processed/*.csv
+# ETL (capa Silver): data/silver/*.parquet
 python -m src.etl.ree_nudos
 python -m src.etl.cpd_espana
 python -m src.etl.variables_extra
@@ -22,7 +22,9 @@ python -m src.etl.entorno
 python -m src.warehouse.build
 ```
 
-El script construye el almacén en un fichero temporal y solo sustituye el `.duckdb` cuando pasan todas las comprobaciones (sección 4). Si algo falla, la versión anterior sigue intacta.
+El script construye el almacén en un fichero temporal y solo sustituye el `.duckdb` cuando pasan todas las comprobaciones (sección 4). Exporta la vista final a un Parquet temporal, valida filas, columnas y códigos INE y después reemplaza `features.parquet`. Si la construcción o validación falla, el almacén y el Parquet finales anteriores permanecen intactos.
+
+Al migrar una instalación anterior, ejecuta `python -m src.data_migration --dry-run` y después `python -m src.data_migration`. Este movimiento seguro cambia `data/raw`, `data/processed` y `data/warehouse` a `data/bronze`, `data/silver` y `data/gold`; aborta sin modificar carpetas si ya existe un destino. Regenera los Silver Parquet ejecutando los comandos ETL de arriba.
 
 ## 2. Esquema
 
@@ -56,23 +58,23 @@ Las dimensiones temáticas tienen una fila por municipio (relación 1:1 con el h
 
 ## 3. Tablas
 
-| Tabla | Filas | Grano | Contenido | CSV de origen |
+| Tabla | Filas | Grano | Contenido | Parquet de origen |
 |---|---|---|---|---|
 | `fact_municipio` | 8.135 | municipio | Claves de todas las dimensiones + **etiqueta del modelo** (`tiene_cpd_operativo`), nº y MW de CPD operativos | geografía, competencia |
-| `dim_geografia` | 8.135 | municipio | Nombre, provincia, centroide (lat/lon) | `municipio_geografia.csv` |
-| `dim_provincia` | 52 | provincia | Nombre y CCAA | `municipio_geografia.csv` |
+| `dim_geografia` | 8.135 | municipio | Nombre, provincia, centroide (lat/lon) | `municipio_geografia.parquet` |
+| `dim_provincia` | 52 | provincia | Nombre y CCAA | `municipio_geografia.parquet` |
 | `dim_ccaa` | 19 | CCAA | Puntuación regulatoria 1-5 y notas | `regulacion_ccaa.csv` |
-| `dim_red_electrica` | 8.135 | municipio | Nudo de REE más cercano, MW libres en 25/50 km, distancia a nudos de 50/100 MW | `municipio_capacidad_red.csv` |
-| `dim_competencia` | 8.135 | municipio | CPD operativos y en cartera en 50 km, hiperescala, distancia al CPD más cercano | `municipio_competencia_cpd.csv` |
-| `dim_clima` | 8.135 | municipio | Índice de aridez, días con temperatura media < 18 ºC | `municipio_variables_extra.csv` |
-| `dim_socioeconomica` | 8.135 | municipio | Población (2015 y 2025), crecimiento, renta 2024, paro (12 meses), valor tasado €/m² | `municipio_socioeconomico.csv`, `municipio_variables_extra.csv` |
-| `dim_riesgos` | 8.135 | municipio | % inundable (100 y 500 años), terremotos en 50 km, magnitud máxima | `municipio_variables_extra.csv`, `municipio_sismicidad.csv` |
-| `dim_conectividad` | 8.135 | municipio | Cables submarinos, universidades, bomberos | `municipio_variables_extra.csv` |
-| `dim_entorno` | 8.135 | municipio | Altitud y pendiente media, distancia a embalse (y nº en 30 km), a río principal, a suelo industrial (y nº en 10 km), a autopista, puerto y aeropuerto | `municipio_entorno.csv` |
-| `fact_cpd` | 278 | CPD | Cada CPD: operador, estado, MW, coordenadas, municipio | `cpd_espana.csv` |
-| `nudo_ree` | 937 | nudo de REE | Capacidad de acceso para demanda de cada nudo | `ree_nudos_capacidad.csv` |
-| `meta_carga` | 12 | tabla | Trazabilidad: CSV de origen, filas y fecha de carga | — |
-| `vw_features_municipio` (vista) | 8.135 | municipio | Todo unido en una tabla plana (66 columnas) para el modelo y el dashboard | — |
+| `dim_red_electrica` | 8.135 | municipio | Nudo de REE más cercano, MW libres en 25/50 km, distancia a nudos de 50/100 MW | `municipio_capacidad_red.parquet` |
+| `dim_competencia` | 8.135 | municipio | CPD operativos y en cartera en 50 km, hiperescala, distancia al CPD más cercano | `municipio_competencia_cpd.parquet` |
+| `dim_clima` | 8.135 | municipio | Índice de aridez, días con temperatura media < 18 ºC | `municipio_variables_extra.parquet` |
+| `dim_socioeconomica` | 8.135 | municipio | Población (2015 y 2025), crecimiento, renta 2024, paro (12 meses), valor tasado €/m² | `municipio_socioeconomico.parquet`, `municipio_variables_extra.parquet` |
+| `dim_riesgos` | 8.135 | municipio | % inundable (100 y 500 años), terremotos en 50 km, magnitud máxima | `municipio_variables_extra.parquet`, `municipio_sismicidad.parquet` |
+| `dim_conectividad` | 8.135 | municipio | Cables submarinos, universidades, bomberos | `municipio_variables_extra.parquet` |
+| `dim_entorno` | 8.135 | municipio | Altitud y pendiente media, distancia a embalse (y nº en 30 km), a río principal, a suelo industrial (y nº en 10 km), a autopista, puerto y aeropuerto | `municipio_entorno.parquet` |
+| `fact_cpd` | 278 | CPD | Cada CPD: operador, estado, MW, coordenadas, municipio | `cpd_espana.parquet` |
+| `nudo_ree` | 937 | nudo de REE | Capacidad de acceso para demanda de cada nudo | `ree_nudos_capacidad.parquet` |
+| `meta_carga` | 12 | tabla | Trazabilidad: fuente, filas y fecha de carga | — |
+| `vw_features_municipio` (vista) | 8.135 | municipio | Todo unido en una tabla plana (66 columnas) para el modelo y el dashboard | exportada como `features.parquet` |
 
 ## 4. Comprobaciones de calidad
 
@@ -88,7 +90,7 @@ Además informa de los valores vacíos de cada columna de la vista.
 
 ```python
 import duckdb
-con = duckdb.connect("data/warehouse/cpd_warehouse.duckdb", read_only=True)
+con = duckdb.connect("data/gold/cpd_warehouse.duckdb", read_only=True)
 
 # Tabla para entrenar el modelo
 df = con.execute("SELECT * FROM vw_features_municipio").df()

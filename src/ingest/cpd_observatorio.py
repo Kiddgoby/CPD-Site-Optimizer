@@ -19,10 +19,13 @@ Es reanudable: cada ficha se guarda por separado.
 from __future__ import annotations
 
 import html as htmllib
+import json
 import re
 import time
 
-from src.ingest.common import http_get, save_raw, raw_path, log
+from config.settings import RAW_DIR
+from src.ingest.common import (cache_is_fresh, file_sha256, http_get, log, raw_path,
+                               read_watermark, save_raw, write_watermark)
 
 SOURCE = "cpd_observatorio"
 DIRECTORIO = "https://observatorioedc.com/directorio/"
@@ -30,6 +33,24 @@ BROWSER = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
                          "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"}
 ETIQUETAS = {"Operador", "Tipo", "Ubicación", "Estado", "Potencia IT", "Superficie",
              "PUE", "Tier", "Inversión", "Año", "Apertura", "Empleo", "Agua", "Refrigeración"}
+
+
+def _valid_cards(path) -> bool:
+    try:
+        cards = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return False
+    return isinstance(cards, list) and bool(cards) and all(
+        isinstance(card, dict) and card.get("id") and card.get("url") for card in cards
+    )
+
+
+def _valid_ficha(path) -> bool:
+    try:
+        card = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return False
+    return isinstance(card, dict) and bool(card.get("id")) and bool(card.get("url"))
 
 
 def _texto(fragmento: str) -> list[str]:
@@ -76,19 +97,34 @@ def _ficha(url: str) -> dict:
 
 
 def run() -> None:
-    if not raw_path(SOURCE, "directorio.json").exists():
+    directory_path = raw_path(SOURCE, "directorio.json")
+    if not cache_is_fresh(directory_path, 7 * 24 * 60 * 60, validator=_valid_cards):
         html = http_get(DIRECTORIO, headers=BROWSER).text
         tarjetas = _tarjetas(html)
+        if not tarjetas:
+            raise ValueError("El directorio del Observatorio no contiene fichas válidas")
         log.info("Observatorio: %d CPD en el directorio", len(tarjetas))
-        save_raw(SOURCE, "directorio.json", tarjetas, DIRECTORIO)
-    import json
-    tarjetas = json.loads(raw_path(SOURCE, "directorio.json").read_text(encoding="utf-8"))
+        directory_path = save_raw(SOURCE, "directorio.json", tarjetas, DIRECTORIO,
+                                  validator=_valid_cards)
+        write_watermark(f"{SOURCE}:directorio",
+                        f"snapshot-sha256:{file_sha256(directory_path)}",
+                        file=directory_path.name, records=len(tarjetas))
+    elif read_watermark(f"{SOURCE}:directorio") is None:
+        write_watermark(f"{SOURCE}:directorio",
+                        f"snapshot-sha256:{file_sha256(directory_path)}",
+                        file=directory_path.name)
+    tarjetas = json.loads(directory_path.read_text(encoding="utf-8"))
     pendientes = [t for t in tarjetas if t.get("url") and t.get("id")
-                  and not raw_path(SOURCE, f"fichas/{t['id']}.json").exists()]
+                  and not cache_is_fresh(
+                      RAW_DIR / SOURCE / f"fichas/{t['id']}.json",
+                      30 * 24 * 60 * 60, validator=_valid_ficha)]
     log.info("Observatorio: %d fichas pendientes", len(pendientes))
     for t in pendientes:
         try:
-            save_raw(SOURCE, f"fichas/{t['id']}.json", {**t, **_ficha(t["url"])}, t["url"])
+            path = save_raw(SOURCE, f"fichas/{t['id']}.json",
+                            {**t, **_ficha(t["url"])}, t["url"], validator=_valid_ficha)
+            write_watermark(f"{SOURCE}:ficha:{t['id']}",
+                            f"snapshot-sha256:{file_sha256(path)}", file=path.name)
         except Exception as e:
             log.warning("Ficha %s: %s", t["url"], e)
         time.sleep(1.0)

@@ -14,7 +14,7 @@ Variables por municipio a partir de las fuentes añadidas en noviembre:
 
 Cada bloque se calcula solo si sus datos raw existen.
 
-Salida: data/processed/municipio_variables_extra.csv
+Salida: data/silver/municipio_variables_extra.parquet
 Uso: python -m src.etl.variables_extra
 """
 from __future__ import annotations
@@ -26,8 +26,10 @@ import pandas as pd
 
 from config.settings import RAW_DIR, PROCESSED_DIR
 from src.etl.geo import municipios, distancias_km, norm_nombre, PROVINCIAS
+from src.etl.common import logged_etl, write_parquet_atomic
 from src.ingest.common import log
 
+OUTPUT = PROCESSED_DIR / "municipio_variables_extra.parquet"
 
 def _puntos_osm(nombre: str) -> pd.DataFrame | None:
     p = RAW_DIR / "osm" / f"{nombre}.json"
@@ -131,6 +133,10 @@ def clima(muni: pd.DataFrame, out: pd.DataFrame) -> None:
     out["dias_tmedia_menor_18"] = g["dias_tmedia_menor_18"].to_numpy()[i]
 
 
+@logged_etl("variables_extra", "osm+cables+inundaciones+openmeteo+vivienda",
+            [RAW_DIR / "osm", RAW_DIR / "cables", RAW_DIR / "inundaciones",
+             RAW_DIR / "openmeteo", RAW_DIR / "vivienda", RAW_DIR / "topografia"],
+            [OUTPUT])
 def run() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     muni = municipios()
@@ -140,7 +146,7 @@ def run() -> None:
     osm_extra(muni, out)
     valor_tasado(out)
     clima(muni, out)
-    out.to_csv(PROCESSED_DIR / "municipio_variables_extra.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(out, OUTPUT)
     log.info("Variables extra: %d municipios, columnas %s", len(out), list(out.columns[2:]))
 
 

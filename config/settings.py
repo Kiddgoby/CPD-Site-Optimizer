@@ -8,13 +8,13 @@ from pathlib import Path
 from datetime import date
 
 # --------------------------------------------------------------------------
-# Rutas (Data Lake por capas: raw -> processed -> warehouse)
+# Rutas (Data Lake por capas: bronze -> silver -> gold)
 # --------------------------------------------------------------------------
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT_DIR / "data"
-RAW_DIR = DATA_DIR / "raw"              # Capa bronze: datos tal cual llegan de la fuente
-PROCESSED_DIR = DATA_DIR / "processed"  # Capa silver: datos limpios y normalizados
-WAREHOUSE_DIR = DATA_DIR / "warehouse"  # Capa gold: Data Warehouse (DuckDB, esquema estrella)
+RAW_DIR = DATA_DIR / "bronze"           # Capa bronze: datos tal cual llegan de la fuente
+PROCESSED_DIR = DATA_DIR / "silver"     # Capa silver: datos limpios y normalizados
+WAREHOUSE_DIR = DATA_DIR / "gold"       # Capa gold: Data Warehouse y features
 MANUAL_DIR = RAW_DIR / "manual"         # Ficheros que hay que bajar a mano (ver docs/01_origen_datos.md)
 
 # --------------------------------------------------------------------------

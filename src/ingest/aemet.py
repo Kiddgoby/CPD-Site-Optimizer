@@ -17,12 +17,14 @@ El script es reanudable: si se corta, al relanzarlo continúa donde lo dejó.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
 
 from config.settings import ROOT_DIR, CURRENT_YEAR
-from src.ingest.common import http_get, save_raw, raw_path, log
+from src.ingest.common import (cache_is_fresh, file_sha256, http_get, log, raw_path,
+                               read_watermark, save_raw, write_watermark)
 
 SOURCE = "aemet"
 API = "https://opendata.aemet.es/opendata/api"
@@ -57,25 +59,38 @@ def run() -> None:
         log.warning("Sin AEMET_API_KEY: se omite AEMET (el clima sale de Open-Meteo)")
         return
     inv_path = raw_path(SOURCE, "estaciones.json")
-    if not inv_path.exists():
+    valid_stations = lambda p: isinstance(json.loads(p.read_text(encoding="utf-8")), list)
+    if cache_is_fresh(inv_path, 30 * 24 * 60 * 60, validator=valid_stations):
+        if read_watermark(f"{SOURCE}:estaciones") is None:
+            write_watermark(f"{SOURCE}:estaciones",
+                            f"snapshot-sha256:{file_sha256(inv_path)}", file=inv_path.name)
+    else:
         est = _fetch("/valores/climatologicos/inventarioestaciones/todasestaciones", key)
-        save_raw(SOURCE, "estaciones.json", est, "inventarioestaciones")
-    import json
+        inv_path = save_raw(SOURCE, "estaciones.json", est, "inventarioestaciones",
+                            validator=valid_stations)
+        write_watermark(f"{SOURCE}:estaciones",
+                        f"snapshot-sha256:{file_sha256(inv_path)}", file=inv_path.name)
     estaciones = json.loads(inv_path.read_text(encoding="utf-8"))
     log.info("AEMET: %d estaciones", len(estaciones))
 
     y0, y1 = CURRENT_YEAR - 3, CURRENT_YEAR - 1  # máx. 36 meses por petición
     for i, e in enumerate(estaciones, 1):
         idema = e["indicativo"]
-        if raw_path(SOURCE, f"mensual/{idema}.json").exists():
+        path = raw_path(SOURCE, f"mensual/{idema}.json")
+        valid_monthly = lambda p: isinstance(json.loads(p.read_text(encoding="utf-8")), list)
+        if cache_is_fresh(path, 30 * 24 * 60 * 60, validator=valid_monthly):
             continue
         ep = f"/valores/climatologicos/mensualesanuales/datos/anioini/{y0}/aniofin/{y1}/estacion/{idema}"
         try:
             data = _fetch(ep, key)
-            save_raw(SOURCE, f"mensual/{idema}.json", data, ep)
+            path = save_raw(SOURCE, f"mensual/{idema}.json", data, ep,
+                            validator=valid_monthly)
+            write_watermark(f"{SOURCE}:{idema}",
+                            f"snapshot-sha256:{file_sha256(path)}",
+                            file=path.name, period=f"{y0}-{y1}")
         except Exception as ex:
-            # Muchas estaciones no tienen climatología mensual: se marca para no reintentar
-            save_raw(SOURCE, f"mensual/{idema}.json", [], f"ERROR: {ex}")
+            log.warning("AEMET estación %s fallida; se reintentará en la próxima ejecución: %s",
+                        idema, ex)
         if i % 50 == 0:
             log.info("AEMET: %d/%d estaciones", i, len(estaciones))
         time.sleep(1.2)

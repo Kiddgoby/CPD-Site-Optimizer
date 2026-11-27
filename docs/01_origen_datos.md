@@ -8,7 +8,7 @@
 
 ## 1. Fuentes automatizadas
 
-Todas se descargan con `python -m src.ingest.run_all` y se guardan sin modificar en `data/raw/<fuente>/` (capa *raw* del Data Lake). Cada descarga queda registrada en `data/raw/_manifest.jsonl` con la URL, la fecha y el tamaño.
+Todas se descargan con `python -m src.ingest.run_all` y se guardan sin modificar en `data/bronze/<fuente>/` (capa Bronze del Data Lake). Cada descarga queda registrada en `data/bronze/_manifest.jsonl` con la URL, la fecha, el tamaño y el estado. Las ejecuciones ETL se registran en el mismo JSON Lines con `record_type: etl`; los watermarks se guardan en `data/bronze/_watermarks.json`.
 
 | # | Fuente | Organismo | Acceso | Formato | Granularidad | Variables que aporta | Bloque del enunciado |
 |---|---|---|---|---|---|---|---|
@@ -35,7 +35,7 @@ Todas se descargan con `python -m src.ingest.run_all` y se guardan sin modificar
 
 ## 2. Fuentes de descarga manual (opcionales)
 
-No tienen API estable, así que se descargan a mano y se dejan en `data/raw/manual/`. Si no están, la ETL las omite y usa las variables aproximadas (*proxies*) indicadas.
+No tienen API estable, así que se descargan a mano y se dejan en `data/bronze/manual/`. Si no están, la ETL las omite y usa las variables aproximadas (*proxies*) indicadas.
 
 | Fuente | Dónde | Variable | Proxy si falta |
 |---|---|---|---|

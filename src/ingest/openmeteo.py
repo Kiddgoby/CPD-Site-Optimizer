@@ -20,13 +20,24 @@ import time
 import numpy as np
 
 from config.settings import RAW_DIR, CURRENT_YEAR, BBOX_PENINSULA, BBOX_CANARIAS
-from src.ingest.common import http_get, save_raw, raw_path, log
+from src.ingest.common import (cache_is_fresh, file_sha256, http_get, log, raw_path,
+                               read_watermark, save_raw, write_watermark)
 
 SOURCE = "openmeteo"
 API = "https://archive-api.open-meteo.com/v1/archive"
 STEP = 0.75  # grados
 DAILY = ["temperature_2m_mean", "temperature_2m_max", "relative_humidity_2m_mean",
          "wind_speed_10m_mean", "precipitation_sum", "et0_fao_evapotranspiration"]
+
+
+def _valid_daily(path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        daily = payload["daily"]
+        lengths = [len(daily[key]) for key in DAILY]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return bool(lengths) and min(lengths) > 0 and len(set(lengths)) == 1
 
 
 def _grid() -> list[tuple[float, float]]:
@@ -51,12 +62,19 @@ def run() -> None:
     log.info("Open-Meteo: %d puntos de rejilla, año %d", len(pts), year)
     for i, (lat, lon) in enumerate(pts, 1):
         name = f"{year}/{lat:.3f}_{lon:.3f}.json"
-        if raw_path(SOURCE, name).exists():
+        path = raw_path(SOURCE, name)
+        key = f"{SOURCE}:{year}:{lat:.3f}:{lon:.3f}"
+        if cache_is_fresh(path, validator=_valid_daily):
+            if read_watermark(key) is None:
+                write_watermark(key, f"snapshot-sha256:{file_sha256(path)}", file=name)
             continue
         params = {"latitude": lat, "longitude": lon, "start_date": f"{year}-01-01",
                   "end_date": f"{year}-12-31", "daily": ",".join(DAILY), "timezone": "Europe/Madrid"}
         try:
-            save_raw(SOURCE, name, http_get(API, params=params).json(), API)
+            data = http_get(API, params=params).json()
+            path = save_raw(SOURCE, name, data, API, validator=_valid_daily)
+            write_watermark(key, f"snapshot-sha256:{file_sha256(path)}",
+                            file=name, year=year)
         except Exception as e:
             log.error("Punto %s,%s: %s", lat, lon, e)
         if i % 25 == 0:
