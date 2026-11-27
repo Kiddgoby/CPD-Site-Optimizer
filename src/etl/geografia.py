@@ -8,19 +8,20 @@ Jerarquía geográfica de cada municipio: municipio -> provincia -> comunidad au
 - Código INE de la CCAA (01-19): se toma del fichero de paro del SEPE, que
   trae "Código de CA" para cada provincia. Así no hay que escribirlo a mano.
 
-Salida: data/processed/municipio_geografia.csv
+Salida: data/silver/municipio_geografia.parquet
 Uso: python -m src.etl.geografia
 """
 from __future__ import annotations
 
-import pandas as pd
-
-from config.settings import PROCESSED_DIR
+from config.settings import PROCESSED_DIR, RAW_DIR
 from src.etl.geo import municipios, distancias_km, PROVINCIAS
+from src.etl.common import logged_etl, write_parquet_atomic
 from src.etl.socioeconomico import leer_paro
 from src.ingest.common import log
 
+OUTPUT = PROCESSED_DIR / "municipio_geografia.parquet"
 
+@logged_etl("geografia", "municipios", [RAW_DIR / "osm", RAW_DIR / "sepe"], [OUTPUT])
 def run() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     out = municipios()
@@ -51,7 +52,7 @@ def run() -> None:
         raise ValueError(f"CCAA con varios códigos: {list(dobles[dobles > 1].index)}")
 
     cols = ["ine", "municipio", "cod_provincia", "provincia", "cod_ccaa", "ccaa", "lat", "lon"]
-    out[cols].to_csv(PROCESSED_DIR / "municipio_geografia.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(out[cols], OUTPUT)
     log.info("Geografía: %d municipios, %d provincias, %d CCAA",
              len(out), out.cod_provincia.nunique(), out.cod_ccaa.nunique())
 

@@ -9,7 +9,7 @@ ningún servidor:
     https://download.geofabrik.de/europe/spain.html   (incluye Ceuta y Melilla)
     https://download.geofabrik.de/africa/canary-islands.html
 
-Genera los mismos ficheros data/raw/osm/<consulta>.json con el formato de
+Genera los mismos ficheros data/bronze/osm/<consulta>.json con el formato de
 Overpass ({"elements": [...]}, con "lat"/"lon" en nodos y "center" en vías y
 relaciones), así que la ETL no cambia. Los ficheros que ya existan se omiten.
 

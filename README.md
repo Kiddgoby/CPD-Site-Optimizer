@@ -7,9 +7,9 @@ Proyecto 3, Máster FP en Inteligencia Artificial y Big Data (Stucom). Entrega: 
 ## Arquitectura
 
 ```
-Fuentes públicas ──► INGESTA ──► Data Lake ─────────────────────────► Data Warehouse ──► Modelos ML ──► Simulador + Dashboard
-(INE, SEPE, REE,     src/ingest   data/raw  (bronze, tal cual)          data/warehouse      src/models      src/dashboard
- AEMET, OSM,                      data/processed (silver, limpio)       (DuckDB, estrella)                  (Streamlit)
+Fuentes públicas ──► INGESTA ──► Data Lake ─────────────────────────► Gold ───────────► Modelos ML ──► Simulador + Dashboard
+(INE, SEPE, REE,     src/ingest   data/bronze (original)             data/gold         src/models      src/dashboard
+ AEMET, OSM,                      data/silver (Parquet)               DuckDB + Parquet                 (Streamlit)
  PeeringDB, EMSC)                 ▲ ETL: src/etl
 ```
 
@@ -30,15 +30,43 @@ Crea un fichero `.env` en la raíz con:
 AEMET_API_KEY=tu_clave
 ```
 
-## 1. Ingesta (capa raw)
+## Migración de datos existentes
+
+Los ficheros locales se conservan. Antes de ejecutar la nueva ingesta/ETL, migra
+las carpetas antiguas una sola vez (el comando falla sin mover nada si ya existe
+alguna carpeta destino):
+
+```bash
+python -m src.data_migration --dry-run
+python -m src.data_migration
+```
+
+`data/raw` pasa a `data/bronze`, `data/processed` a `data/silver` y
+`data/warehouse` a `data/gold`. La migración no descarga ni elimina los datos;
+`data/reference/regulacion_ccaa.csv` permanece en su ubicación.
+
+## 1. Ingesta (capa Bronze)
 
 ```bash
 python -m src.ingest.run_all                    # todo (~1 h por AEMET y OSM)
 python -m src.ingest.run_all --only ine sepe    # solo algunas fuentes
 ```
-Los scripts son reanudables: si se cortan, al relanzarlos siguen donde lo dejaron.
+Los scripts reusan ficheros válidos y verifican formatos donde aplica. Las
+descargas se escriben primero a temporales y luego se reemplazan atómicamente.
+`data/bronze/_manifest.jsonl` conserva el historial de descargas y registra
+también el inicio, fin, resultado y entradas/salidas de cada ETL. Los watermarks
+fuente-específicos se guardan en `data/bronze/_watermarks.json`; los snapshots
+estáticos usan checksum y las consultas incrementales guardan su posición.
+Los errores 4xx no se reintentan (salvo 429); 429 respeta `Retry-After`, y 5xx,
+errores de conexión y timeout usan reintentos limitados con backoff.
 
-## 2. ETL (capa processed)
+La ingesta sísmica pagina EMSC y usa USGS como respaldo. Ambos servicios
+documentan offsets desde 1; `sismicidad` consulta hasta una página vacía y
+solo finaliza el fichero y watermark si todas las páginas llegan correctamente.
+`python -m src.ingest.sismicidad --refresh` fuerza una actualización; usa
+`updatedafter` cuando hay un watermark temporal previo.
+
+## 2. ETL (capa Silver)
 
 ```bash
 python -m src.etl.ree_nudos          # capacidad de red por municipio
@@ -50,12 +78,18 @@ python -m src.etl.geografia          # municipio -> provincia -> CCAA
 python -m src.etl.entorno            # altitud, pendiente, agua, suelo industrial y accesos
 ```
 
-## 3. Data Warehouse (DuckDB)
+Las salidas ETL son Parquet (`data/silver/*.parquet`) y conservan los códigos
+INE como texto. Los CSV originales de las fuentes permanecen sin cambios en
+Bronze.
+
+## 3. Gold (DuckDB + Parquet)
 
 ```bash
-python -m src.warehouse.build        # crea data/warehouse/cpd_warehouse.duckdb
+python -m src.warehouse.build        # crea data/gold/cpd_warehouse.duckdb y features.parquet
 ```
-Comprueba que no se pierde ningún municipio (8.135) y deja la vista `vw_features_municipio` lista para el modelo. Detalle en [docs/02_data_warehouse.md](docs/02_data_warehouse.md).
+Comprueba que no se pierde ningún municipio (8.135), crea la vista
+`vw_features_municipio` y exporta sus columnas a `data/gold/features.parquet`.
+Detalle en [docs/02_data_warehouse.md](docs/02_data_warehouse.md).
 
 ## Estructura
 
@@ -63,8 +97,8 @@ Comprueba que no se pierde ningún municipio (8.135) y deja la vista `vw_feature
 |---|---|
 | `config/` | Rutas, años y parámetros comunes |
 | `src/ingest/` | Un script por fuente de datos |
-| `src/etl/` | Limpieza y transformación (raw -> processed) |
-| `src/warehouse/` | Esquema y carga del Data Warehouse (processed -> DuckDB) |
+| `src/etl/` | Limpieza y transformación (Bronze -> Silver Parquet) |
+| `src/warehouse/` | Esquema y carga del Data Warehouse (Silver -> Gold) |
 | `src/models/` | Modelos de ML y series temporales |
 | `src/dashboard/` | Simulador y cuadro de mando (Streamlit) |
 | `docs/` | Documentación del proyecto (informes del entregable) |

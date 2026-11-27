@@ -1,7 +1,7 @@
 """
 ETL de la capacidad de acceso para consumo de REE (ver src/ingest/ree_capacidad.py).
 
-1. Lee el Excel más reciente de data/raw/ree_capacidad/ y se queda con las
+1. Lee el Excel más reciente de data/bronze/ree_capacidad/ y se queda con las
    columnas útiles para un CPD.
 2. Geolocaliza cada nudo (el Excel no trae coordenadas):
    a) nombre igual a una subestación de OSM (prioriza las de Red Eléctrica y
@@ -20,8 +20,8 @@ instalación "CEP". Se usa como variable principal la capacidad CEP CH (con
 cumplimiento de hueco de tensión, que es lo habitual en un CPD con SAI).
 
 Salidas:
-    data/processed/ree_nudos_capacidad.csv
-    data/processed/municipio_capacidad_red.csv
+    data/silver/ree_nudos_capacidad.parquet
+    data/silver/municipio_capacidad_red.parquet
 
 Uso: python -m src.etl.ree_nudos
 """
@@ -39,8 +39,11 @@ import pandas as pd
 
 from config.settings import RAW_DIR, PROCESSED_DIR
 from src.etl.geo import municipios, distancias_km
+from src.etl.common import logged_etl, write_parquet_atomic
 from src.ingest.common import log
 
+OUTPUT_NUDOS = PROCESSED_DIR / "ree_nudos_capacidad.parquet"
+OUTPUT_MUNICIPIOS = PROCESSED_DIR / "municipio_capacidad_red.parquet"
 # Columnas del Excel "Ficha Capacidades" (los datos empiezan en la fila 5)
 COLS = {
     0: "nudo", 1: "cod_subestacion", 2: "ccaa",
@@ -75,7 +78,7 @@ def _num(v) -> float:
 def leer_excel() -> pd.DataFrame:
     ficheros = sorted((RAW_DIR / "ree_capacidad").glob("*.xlsx"))
     if not ficheros:
-        raise RuntimeError("No hay Excel de capacidad en data/raw/ree_capacidad/ "
+        raise RuntimeError("No hay Excel de capacidad en data/bronze/ree_capacidad/ "
                            "(ejecuta python -m src.ingest.run_all --only ree_capacidad)")
     path = ficheros[-1]
     log.info("Leyendo %s", path.name)
@@ -190,12 +193,15 @@ def por_municipio(nudos: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+@logged_etl("ree_nudos", "ree_capacidad+osm",
+            [RAW_DIR / "ree_capacidad", RAW_DIR / "osm"],
+            [OUTPUT_NUDOS, OUTPUT_MUNICIPIOS])
 def run() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     nudos = geolocalizar(leer_excel())
-    nudos.to_csv(PROCESSED_DIR / "ree_nudos_capacidad.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(nudos, OUTPUT_NUDOS)
     muni = por_municipio(nudos)
-    muni.to_csv(PROCESSED_DIR / "municipio_capacidad_red.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(muni, OUTPUT_MUNICIPIOS)
     log.info("Nudos con >0 MW libres para CPD: %d de %d",
              (nudos[CAP] > 0).sum(), len(nudos))
 

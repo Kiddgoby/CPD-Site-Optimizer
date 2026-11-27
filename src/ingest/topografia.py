@@ -18,7 +18,9 @@ import json
 import time
 
 from config.settings import RAW_DIR
-from src.ingest.common import http_get, save_raw, raw_path, log
+from src.ingest.common import (cache_is_fresh, file_sha256, http_get, log, raw_path,
+                               read_watermark, save_raw, write_watermark)
+from src.ingest.common import DataValidationError
 
 SOURCE = "topografia"
 API = "https://api.opentopodata.org/v1/{dataset}"
@@ -50,16 +52,34 @@ def run() -> None:
     for i in range(0, len(puntos), BATCH):
         lote = puntos[i:i + BATCH]
         name = f"lotes/{i // BATCH:04d}.json"
-        if raw_path(SOURCE, name).exists():
+        path = raw_path(SOURCE, name)
+        expected = len(lote)
+        validator = lambda p: (
+            isinstance(json.loads(p.read_text(encoding="utf-8")), list)
+            and len(json.loads(p.read_text(encoding="utf-8"))) == expected
+        )
+        watermark_key = f"{SOURCE}:{i // BATCH:04d}"
+        if cache_is_fresh(path, validator=validator):
+            if read_watermark(watermark_key) is None:
+                write_watermark(watermark_key,
+                                f"snapshot-sha256:{file_sha256(path)}", file=name)
             continue
         dataset = "srtm30m" if all(p[2] < 30 for p in lote) else "eudem25m,srtm30m"
         locs = "|".join(f"{p[2]:.5f},{p[3]:.5f}" for p in lote)
         try:
             res = http_get(API.format(dataset=dataset), params={"locations": locs}).json()
+            results = res.get("results", [])
+            if len(results) != expected:
+                raise DataValidationError(
+                    f"Topografía lote {i // BATCH}: esperaba {expected} resultados, recibí {len(results)}"
+                )
             filas = [{"ine": p[0], "pos": p[1], "lat": p[2], "lon": p[3],
                       "elevacion": r.get("elevation")}
-                     for p, r in zip(lote, res.get("results", []))]
-            save_raw(SOURCE, name, filas, API.format(dataset=dataset))
+                     for p, r in zip(lote, results)]
+            path = save_raw(SOURCE, name, filas, API.format(dataset=dataset),
+                            validator=validator)
+            write_watermark(watermark_key, f"snapshot-sha256:{file_sha256(path)}",
+                            file=name, records=len(filas))
         except Exception as e:
             log.error("Lote %d: %s", i // BATCH, e)
         time.sleep(1.1)

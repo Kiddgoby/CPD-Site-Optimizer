@@ -1,12 +1,12 @@
 """
 Variables socioeconómicas por municipio.
 
-- Población (INE, padrón por API, data/raw/ine/padron_municipios.json):
+- Población (INE, padrón por API, data/bronze/ine/padron_municipios.json):
   población del último año publicado, de 2015 y crecimiento % entre ambos.
 - Renta (INE, Atlas de Distribución de Renta de los Hogares, tablas provinciales
-  en data/raw/ine/adrh_cod/): renta neta media por persona y por hogar y
+  en data/bronze/ine/adrh_cod/): renta neta media por persona y por hogar y
   mediana de la renta por unidad de consumo, del último año publicado.
-- Paro registrado (SEPE, data/raw/sepe/): media de los últimos 12 meses
+- Paro registrado (SEPE, data/bronze/sepe/): media de los últimos 12 meses
   publicados y tasa de paro aproximada = parados medios / población * 100.
   Es una aproximación: el SEPE no da población activa por municipio.
   El SEPE oculta los valores pequeños como "<5"; se sustituyen por 2,5
@@ -14,7 +14,7 @@ Variables socioeconómicas por municipio.
 
 El valor tasado de la vivienda (coste del suelo) ya lo calcula variables_extra.py.
 
-Salida: data/processed/municipio_socioeconomico.csv
+Salida: data/silver/municipio_socioeconomico.parquet
 Uso: python -m src.etl.socioeconomico
 """
 from __future__ import annotations
@@ -26,8 +26,10 @@ import pandas as pd
 
 from config.settings import RAW_DIR, PROCESSED_DIR
 from src.etl.geo import municipios
+from src.etl.common import logged_etl, write_parquet_atomic
 from src.ingest.common import log
 
+OUTPUT = PROCESSED_DIR / "municipio_socioeconomico.parquet"
 ANIO_BASE_POBLACION = "2015"
 VALOR_SECRETO_PARO = 2.5          # sustituto de "<5" en el fichero del SEPE
 RENTA = {                          # indicador del ADRH -> columna de salida
@@ -108,6 +110,7 @@ def _paro(poblacion: pd.DataFrame) -> pd.DataFrame:
     return out.drop(columns="poblacion")
 
 
+@logged_etl("socioeconomico", "ine+sepe", [RAW_DIR / "ine", RAW_DIR / "sepe", RAW_DIR / "osm"], [OUTPUT])
 def run() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     out = municipios()[["ine", "municipio"]]
@@ -116,7 +119,7 @@ def run() -> None:
               .merge(_renta(), on="ine", how="left")
               .merge(_paro(pob), on="ine", how="left"))
     out = out.replace([np.inf, -np.inf], np.nan)
-    out.to_csv(PROCESSED_DIR / "municipio_socioeconomico.csv", index=False, encoding="utf-8")
+    write_parquet_atomic(out, OUTPUT)
     vacios = out.drop(columns=["ine", "municipio"]).isna().sum()
     log.info("Socioeconómico: %d municipios. Vacíos por columna: %s",
              len(out), vacios[vacios > 0].to_dict() or "ninguno")

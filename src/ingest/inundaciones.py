@@ -28,7 +28,8 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 
 from config.settings import RAW_DIR
-from src.ingest.common import http_get, save_raw, raw_path, log
+from src.ingest.common import (cache_is_fresh, DataValidationError, http_get, save_raw,
+                               raw_path, log)
 
 SOURCE = "inundaciones"
 WMS = "https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones"
@@ -84,10 +85,22 @@ def _fila(m: tuple[str, float, float]) -> dict:
     return fila
 
 
+def _valid_batch(path, expected: int | None = None) -> bool:
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return False
+    return (isinstance(rows, list) and (expected is None or len(rows) == expected)
+            and all(isinstance(row, dict) and {"ine", "lat", "lon"}.issubset(row)
+                    for row in rows))
+
+
 def _reparar() -> None:
     """Segunda pasada: el WMS da errores 503 a ratos, así que se vuelven a pedir
     los valores que quedaron vacíos (None) en los lotes ya guardados."""
     for f in sorted((RAW_DIR / SOURCE / "lotes").glob("*.json")):
+        if not _valid_batch(f):
+            raise DataValidationError(f"Lote de inundaciones inválido: {f}")
         filas = json.loads(f.read_text(encoding="utf-8"))
         huecos = [x for x in filas for k in CAPAS if x.get(f"pct_inundable_{k}") is None]
         if not huecos:
@@ -96,7 +109,11 @@ def _reparar() -> None:
             for k, capas in CAPAS.items():
                 if x.get(f"pct_inundable_{k}") is None:
                     x[f"pct_inundable_{k}"] = pct_inundable(x["lat"], x["lon"], capas)
-        save_raw(SOURCE, f"lotes/{f.name}", filas, WMS)
+        status = "partial" if any(
+            x.get(f"pct_inundable_{k}") is None for x in filas for k in CAPAS
+        ) else "success"
+        save_raw(SOURCE, f"lotes/{f.name}", filas, WMS,
+                 validator=lambda p, n=len(filas): _valid_batch(p, n), status=status)
 
 
 def run() -> None:
@@ -104,11 +121,18 @@ def run() -> None:
     log.info("Inundaciones: %d municipios (%d lotes)", len(muni), -(-len(muni) // BATCH))
     for i in range(0, len(muni), BATCH):
         name = f"lotes/{i // BATCH:03d}.json"
-        if raw_path(SOURCE, name).exists():
+        path = raw_path(SOURCE, name)
+        expected = len(muni[i:i + BATCH])
+        if cache_is_fresh(path, 30 * 24 * 60 * 60,
+                          validator=lambda p: _valid_batch(p, expected)):
             continue
         with ThreadPoolExecutor(WORKERS) as ex:
             filas = list(ex.map(_fila, muni[i:i + BATCH]))
-        save_raw(SOURCE, name, filas, WMS)
+        status = "partial" if any(
+            fila[f"pct_inundable_{key}"] is None for fila in filas for key in CAPAS
+        ) else "success"
+        save_raw(SOURCE, name, filas, WMS,
+                 validator=lambda p: _valid_batch(p, expected), status=status)
     _reparar()
 
 

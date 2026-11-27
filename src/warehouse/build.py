@@ -1,5 +1,5 @@
 """
-Construye el Data Warehouse en DuckDB a partir de los CSV de data/processed.
+Construye el Data Warehouse en DuckDB a partir del Parquet de data/silver.
 
 Esquema en estrella (ver schema.sql y docs/02_data_warehouse.md):
 - fact_municipio: una fila por municipio (código INE de 5 dígitos), con la
@@ -19,7 +19,7 @@ Comprobaciones antes de dar por buena la carga (si alguna falla, el
 Requisitos: haber ejecutado la ETL (python -m src.etl.<script>) para
 geografia, socioeconomico, sismicidad, ree_nudos, cpd_espana, variables_extra y entorno.
 
-Salida: data/warehouse/cpd_warehouse.duckdb
+Salida: data/gold/cpd_warehouse.duckdb y data/gold/features.parquet
 Uso: python -m src.warehouse.build
 """
 from __future__ import annotations
@@ -29,31 +29,29 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
-import pandas as pd
 
 from config.settings import PROCESSED_DIR, WAREHOUSE_DIR, DATA_DIR
+from src.etl.common import logged_etl
 from src.ingest.common import log
 
 DB_PATH = WAREHOUSE_DIR / "cpd_warehouse.duckdb"
+FEATURES_PATH = WAREHOUSE_DIR / "features.parquet"
 SCHEMA = Path(__file__).with_name("schema.sql")
 MUNICIPIOS_ESPERADOS = 8135   # referencia de la ETL actual (municipios con código INE en OSM)
 
-# Vista temporal -> (CSV, script de la ETL que lo genera)
+# Vista temporal -> (Parquet, script de la ETL que lo genera)
 FUENTES = {
-    "src_geo": (PROCESSED_DIR / "municipio_geografia.csv", "geografia"),
-    "src_socio": (PROCESSED_DIR / "municipio_socioeconomico.csv", "socioeconomico"),
-    "src_sismo": (PROCESSED_DIR / "municipio_sismicidad.csv", "sismicidad"),
-    "src_red": (PROCESSED_DIR / "municipio_capacidad_red.csv", "ree_nudos"),
-    "src_nudos": (PROCESSED_DIR / "ree_nudos_capacidad.csv", "ree_nudos"),
-    "src_comp": (PROCESSED_DIR / "municipio_competencia_cpd.csv", "cpd_espana"),
-    "src_cpd": (PROCESSED_DIR / "cpd_espana.csv", "cpd_espana"),
-    "src_extra": (PROCESSED_DIR / "municipio_variables_extra.csv", "variables_extra"),
-    "src_entorno": (PROCESSED_DIR / "municipio_entorno.csv", "entorno"),
+    "src_geo": (PROCESSED_DIR / "municipio_geografia.parquet", "geografia"),
+    "src_socio": (PROCESSED_DIR / "municipio_socioeconomico.parquet", "socioeconomico"),
+    "src_sismo": (PROCESSED_DIR / "municipio_sismicidad.parquet", "sismicidad"),
+    "src_red": (PROCESSED_DIR / "municipio_capacidad_red.parquet", "ree_nudos"),
+    "src_nudos": (PROCESSED_DIR / "ree_nudos_capacidad.parquet", "ree_nudos"),
+    "src_comp": (PROCESSED_DIR / "municipio_competencia_cpd.parquet", "cpd_espana"),
+    "src_cpd": (PROCESSED_DIR / "cpd_espana.parquet", "cpd_espana"),
+    "src_extra": (PROCESSED_DIR / "municipio_variables_extra.parquet", "variables_extra"),
+    "src_entorno": (PROCESSED_DIR / "municipio_entorno.parquet", "entorno"),
     "src_reg": (DATA_DIR / "reference" / "regulacion_ccaa.csv", None),
 }
-# Columnas que son códigos: se leen como texto para no perder los ceros a la izquierda
-CODIGOS = {"ine", "cod_provincia", "cod_ccaa", "cod_subestacion", "id_fuente"}
-
 # Tabla -> SELECT que la alimenta (se inserta por nombre de columna)
 CARGAS = {
     "dim_ccaa": """
@@ -108,26 +106,26 @@ def _sql_texto(s: str) -> str:
 
 
 def _registrar_fuentes(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
-    """Carga cada CSV en una tabla temporal y devuelve sus filas."""
+    """Load each Silver Parquet file and the reference CSV into temp tables."""
     filas = {}
     for vista, (path, etl) in FUENTES.items():
         if not path.exists():
             como = f"python -m src.etl.{etl}" if etl else "el fichero de referencia del repo"
             raise FileNotFoundError(f"Falta {path}. Genéralo con: {como}")
-        cols = pd.read_csv(path, nrows=0).columns
-        tipos = ", ".join(f"{_sql_texto(c)}: 'VARCHAR'" for c in cols if c in CODIGOS)
-        extra = f", types = {{{tipos}}}" if tipos else ""
-        con.execute(f"CREATE TEMP TABLE {vista} AS SELECT * FROM read_csv("
-                    f"{_sql_texto(path.as_posix())}, header = true{extra})")
+        if path.suffix.lower() == ".csv":
+            reader = f"read_csv({_sql_texto(path.as_posix())}, header = true)"
+        else:
+            reader = f"read_parquet({_sql_texto(path.as_posix())})"
+        con.execute(f"CREATE TEMP TABLE {vista} AS SELECT * FROM {reader}")
         filas[vista] = con.execute(f"SELECT count(*) FROM {vista}").fetchone()[0]
     return filas
 
 
-def _comprobar(con: duckdb.DuckDBPyConnection, filas_csv: dict[str, int]) -> None:
+def _comprobar(con: duckdb.DuckDBPyConnection, filas_fuente: dict[str, int]) -> None:
     n_geo = con.execute("SELECT count(*) FROM dim_geografia").fetchone()[0]
     errores = []
-    if n_geo != filas_csv["src_geo"]:
-        errores.append(f"dim_geografia tiene {n_geo} filas y el CSV {filas_csv['src_geo']}")
+    if n_geo != filas_fuente["src_geo"]:
+        errores.append(f"dim_geografia tiene {n_geo} filas y el Parquet {filas_fuente['src_geo']}")
     for t in TABLAS_MUNICIPIO + ["vw_features_municipio"]:
         n = con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
         faltan = con.execute(f"SELECT count(*) FROM dim_geografia g ANTI JOIN {t} t USING (ine)").fetchone()[0]
@@ -161,13 +159,46 @@ def _informe(con: duckdb.DuckDBPyConnection) -> None:
         log.warning("Regulación: %d de 19 CCAA con puntuación provisional (sin validar)", prov)
 
 
+def _exportar_features(con: duckdb.DuckDBPyConnection) -> Path:
+    """Export and validate the final feature view to an adjacent temporary file."""
+    tmp = FEATURES_PATH.with_name(FEATURES_PATH.name + ".tmp")
+    tmp.unlink(missing_ok=True)
+    target = _sql_texto(tmp.as_posix())
+    con.execute(f"COPY (SELECT * FROM vw_features_municipio) TO {target} (FORMAT PARQUET)")
+    expected = con.execute("SELECT count(*) FROM vw_features_municipio").fetchone()[0]
+    actual, municipios, invalid_ine = con.execute(
+        f"SELECT count(*), count(DISTINCT ine), "
+        f"count(*) FILTER (WHERE ine IS NULL OR length(CAST(ine AS VARCHAR)) <> 5) "
+        f"FROM read_parquet({target})"
+    ).fetchone()
+    expected_columns = [row[0] for row in con.execute(
+        "DESCRIBE SELECT * FROM vw_features_municipio"
+    ).fetchall()]
+    exported_columns = [row[0] for row in con.execute(
+        f"DESCRIBE SELECT * FROM read_parquet({target})"
+    ).fetchall()]
+    if (actual != expected or municipios != expected or invalid_ine
+            or exported_columns != expected_columns):
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(
+            "features.parquet validation failed: "
+            f"rows={actual}/{expected}, unique_ine={municipios}, "
+            f"invalid_ine={invalid_ine}, columns_match={exported_columns == expected_columns}"
+        )
+    return tmp
+
+
+@logged_etl("build_warehouse", "silver",
+            [PROCESSED_DIR, DATA_DIR / "reference" / "regulacion_ccaa.csv"],
+            [DB_PATH, FEATURES_PATH])
 def run() -> None:
     WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = DB_PATH.with_suffix(".duckdb.tmp")
+    features_tmp = FEATURES_PATH.with_name(FEATURES_PATH.name + ".tmp")
     tmp.unlink(missing_ok=True)
     con = duckdb.connect(str(tmp))
     try:
-        filas_csv = _registrar_fuentes(con)
+        filas_fuente = _registrar_fuentes(con)
         con.execute(SCHEMA.read_text(encoding="utf-8"))
         ahora = datetime.now()
         for tabla, select in CARGAS.items():
@@ -175,19 +206,28 @@ def run() -> None:
             n = con.execute(f"SELECT count(*) FROM {tabla}").fetchone()[0]
             origen = ", ".join(p.name for v, (p, _) in FUENTES.items() if v in select)
             con.execute("INSERT INTO meta_carga VALUES (?, ?, ?, ?)", [tabla, origen, n, ahora])
-        _comprobar(con, filas_csv)
+        _comprobar(con, filas_fuente)
         _informe(con)
+        features_tmp = _exportar_features(con)
     except Exception:
         con.close()
         tmp.unlink(missing_ok=True)
+        features_tmp.unlink(missing_ok=True)
         raise
     con.close()
     try:
         os.replace(tmp, DB_PATH)
     except PermissionError as e:
+        features_tmp.unlink(missing_ok=True)
         raise PermissionError(f"No se puede sustituir {DB_PATH}: ciérralo si está abierto "
                               f"en otro programa (DBeaver, otro Python...). La versión nueva "
                               f"está en {tmp}") from e
+    try:
+        os.replace(features_tmp, FEATURES_PATH)
+    except OSError as e:
+        features_tmp.unlink(missing_ok=True)
+        raise OSError(f"El almacén se actualizó, pero no se pudo sustituir {FEATURES_PATH}; "
+                      f"el Parquet anterior se conserva") from e
     log.info("Data Warehouse creado: %s (%.1f MB)", DB_PATH, DB_PATH.stat().st_size / 2**20)
 
 
