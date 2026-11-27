@@ -12,7 +12,7 @@ Variables por municipio a partir de las fuentes añadidas en noviembre:
   evapotranspiración (P/ET0; < 0,5 = semiárido o más seco -> estrés hídrico)
   y días al año con temperatura media < 18 ºC (aproximación a free cooling).
 
-Cada bloque se calcula solo si sus datos raw existen.
+Cada bloque se calcula solo si sus datos de bronze existen.
 
 Salida: data/silver/municipio_variables_extra.parquet
 Uso: python -m src.etl.variables_extra

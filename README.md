@@ -116,3 +116,9 @@ Detalle en [docs/02_data_warehouse.md](docs/02_data_warehouse.md).
 - [ ] Fase 5: forecasting de la demanda eléctrica a 10 años
 - [ ] Fase 6: simulador y dashboard
 - [ ] Fase 7: manuales, vídeo y documento de especificación
+
+## Autores
+
+- Marc Fernández González
+- Arnau Gausachs Gancedo
+- Yixin Huang
