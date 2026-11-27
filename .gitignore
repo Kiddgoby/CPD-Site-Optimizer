@@ -1,4 +1,8 @@
-# Datos: no se suben al repo (se regeneran con los scripts de ingesta)
+# Datos: no se suben al repo
+data/bronze/*
+data/silver/*
+data/gold/*
+# Carpetas de instalaciones anteriores, hasta completar su migración
 data/raw/*
 data/processed/*
 data/warehouse/*
